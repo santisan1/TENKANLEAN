@@ -482,16 +482,16 @@ const SupplyChainView = () => {
 // Component: Plant Map
 const PlantMap = ({ locationStatuses, orders }) => {
   const locations = [
-    { id: 'Bobinado A', x: 25, y: 20 },
-    { id: 'Bobinado B', x: 50, y: 20 },
-    { id: 'Bobinado C', x: 75, y: 20 },
-    { id: 'Almacén', x: 50, y: 70 },
-    { id: 'Montaje', x: 25, y: 50 },
-    { id: 'Control Calidad', x: 75, y: 50 }
+    { id: 'Estantería A', x: 25, y: 20 },
+    { id: 'Estantería B', x: 50, y: 20 },
+    { id: 'Estantería C', x: 75, y: 20 },
+    { id: 'Estantería D', x: 50, y: 70 },
+    { id: 'Estantería E', x: 25, y: 50 },
+    { id: 'Estantería F', x: 75, y: 50 }
   ];
 
   // Reemplazar esta URL por tu imagen real del plano de planta
-  const plantLayoutImage = "https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=80";
+  const plantLayoutImage = "tu-plano.png";
 
   return (
     <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
