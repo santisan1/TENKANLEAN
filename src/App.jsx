@@ -108,11 +108,9 @@ const OperatorView = () => {
 
   const handleScan = async (scannedId) => {
     const now = Date.now();
+    // Evita escaneos accidentales múltiples seguidos (rebote)
     if (now - lastScanTime < 5000) {
-      setFeedback({
-        type: 'error',
-        message: 'Aguarde 5 segundos entre escaneos'
-      });
+      setFeedback({ type: 'error', message: 'Aguarde un momento entre escaneos' });
       return;
     }
     setLastScanTime(now);
@@ -123,52 +121,49 @@ const OperatorView = () => {
     setExistingOrderInfo(null);
 
     try {
-      // 1. Check if card exists in master
+      // 1. Verificamos si la tarjeta existe en el Maestro de Materiales
       const cardRef = doc(db, 'kanban_cards', scannedId);
       const cardSnap = await getDoc(cardRef);
 
       if (!cardSnap.exists()) {
-        setFeedback({
-          type: 'error',
-          message: 'Tarjeta no registrada\nContacte al supervisor'
-        });
+        setFeedback({ type: 'error', message: 'Tarjeta NO REGISTRADA en el sistema.' });
         setScanning(false);
         return;
       }
 
       const card = cardSnap.data();
-      const minutosEspera = Math.floor((Date.now() - existingOrder.timestamp.toMillis()) / 60000);
-      // 2. Check for existing active order
+
+      // 2. BUSQUEDA DE DUPLICADOS: Verificamos si ya hay un pedido activo
       const existingOrder = await checkExistingOrder(scannedId);
 
       if (existingOrder.exists) {
+        // Calculamos cuánto tiempo lleva esperando el pedido original
+        const pedidoOriginalTime = existingOrder.timestamp.toMillis();
+        const minutosEspera = Math.floor((Date.now() - pedidoOriginalTime) / 60000);
+
         setExistingOrderInfo({
+          orderId: existingOrder.orderId,
           status: existingOrder.status,
           timestamp: existingOrder.timestamp,
           location: existingOrder.location,
           partNumber: existingOrder.partNumber
         });
 
-        const statusMessage = {
-          'PENDING': 'Ya hay un pedido pendiente',
-          'IN_TRANSIT': 'El material está en camino'
-        };
+        const mensajeEstado = existingOrder.status === 'PENDING'
+          ? 'ya fue solicitado y está PENDIENTE'
+          : 'ya está EN CAMINO';
 
         setFeedback({
           type: 'info',
-          message: `${statusMessage[existingOrder.status] || 'Pedido en progreso'}\n${existingOrder.partNumber} - ${card.description}\n Esperando ${minutosEspera} minutos\nNo se requiere nueva solicitud`
+          message: `¡AVISO!\nEste material ${mensajeEstado}.\nEsperando hace ${minutosEspera} min.\nEvitemos sobre-stock.`
         });
 
-        setTimeout(() => {
-          setFeedback(null);
-          setCardId('');
-        }, 5000);
         setScanning(false);
-        return;
+        return; // CORTA LA EJECUCIÓN: No crea el pedido nuevo
       }
 
-      // 3. Create new order if no existing active order
-      const docRef = await addDoc(collection(db, 'active_orders'), {
+      // 3. SI NO HAY DUPLICADO: Crea el nuevo pedido
+      await addDoc(collection(db, 'active_orders'), {
         cardId: scannedId,
         partNumber: card.partNumber,
         description: card.description,
@@ -179,28 +174,18 @@ const OperatorView = () => {
         createdAt: serverTimestamp()
       });
 
-      console.log('Order created with ID:', docRef.id);
-
       setFeedback({
         type: 'success',
-        message: `✓ Pedido enviado a Almacén\n${card.partNumber} - ${card.description}\nUbicación: ${card.location}`
+        message: `✓ Pedido confirmado para ${card.location}\n${card.partNumber} solicitado.`
       });
-
-      setTimeout(() => {
-        setFeedback(null);
-        setCardId('');
-      }, 4000);
 
     } catch (error) {
-      console.error('Error creating order:', error);
-      setFeedback({
-        type: 'error',
-        message: 'Error del sistema\nContacte al supervisor'
-      });
+      console.error('Error:', error);
+      setFeedback({ type: 'error', message: 'Error de conexión. Intente nuevamente.' });
     }
 
     setScanning(false);
-  }
+  };
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-950">
       {/* Industrial Header */}
