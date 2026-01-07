@@ -487,7 +487,12 @@ const PlantMap = ({ locationStatuses, orders }) => {
     { id: 'Estantería C', x: 75, y: 20 },
     { id: 'Estantería D', x: 50, y: 70 },
   ];
-
+  const handleMapClick = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    console.log(`Coordenadas: x: ${x.toFixed(2)}, y: ${y.toFixed(2)}`);
+  };
   // Reemplazar esta URL por tu imagen real del plano de planta
   const plantLayoutImage = "tu-plano.png";
 
