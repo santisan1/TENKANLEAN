@@ -278,9 +278,38 @@ const OperatorView = () => {
                   <Clock className="w-4 h-4" />
                   <span>El almacén está procesando tu solicitud</span>
                 </div>
+                <button
+                  onClick={async () => {
+                    try {
+                      await updateDoc(doc(db, 'active_orders', existingOrderInfo.orderId), {
+                        status: 'CANCELLED',
+                        cancelledAt: serverTimestamp()
+                      });
+
+                      setFeedback({
+                        type: 'success',
+                        message: 'Pedido cancelado correctamente'
+                      });
+
+                      setExistingOrderInfo(null);
+                      setCardId('');
+                    } catch (error) {
+                      console.error('Error cancelling order:', error);
+                      setFeedback({
+                        type: 'error',
+                        message: 'No se pudo cancelar el pedido'
+                      });
+                    }
+                  }}
+                  className="w-full mt-4 bg-red-500/20 hover:bg-red-500/30 text-red-300 py-3 rounded-lg font-medium transition-colors border border-red-500/30 flex items-center justify-center gap-2"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Cancelar este pedido</span>
+                </button>
               </div>
             </motion.div>
           )}
+
         </AnimatePresence>
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
