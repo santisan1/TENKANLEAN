@@ -522,12 +522,16 @@ const PlantMap = ({ locationStatuses, orders }) => {
       </div>
 
       <div className="relative rounded-xl border-2 border-gray-700 h-96 overflow-hidden">
-        {/* Imagen del plano de planta */}
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${plantLayoutImage})` }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-950/90 via-gray-950/60 to-gray-950/30"></div>
+
+        {/* Imagen del plano de planta - Ajuste Completo */}
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-950/40">
+          <img
+            src={plantLayoutImage}
+            alt="Plano de planta"
+            className="w-full h-full object-contain"
+          />
+          {/* Overlay de gradiente más sutil para no tapar los bordes del plano */}
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-transparent to-transparent pointer-events-none"></div>
         </div>
 
         {/* Overlay de grid sutil */}
