@@ -525,106 +525,108 @@ const PlantMap = ({ locationStatuses, orders }) => {
       </div>
 
       <div className="relative rounded-xl border-2 border-gray-700 h-96 overflow-hidden">
-        onClick={handleMapClick}
-        className="relative rounded-xl border-2 border-gray-700 h-96 overflow-hidden cursor-crosshair"
-        {/* Imagen del plano de planta - Ajuste Completo */}
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-950/40">
-          <img
-            src={plantLayoutImage}
-            alt="Plano de planta"
-            className="w-full h-full object-contain"
-          />
-          {/* Overlay de gradiente más sutil para no tapar los bordes del plano */}
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-transparent to-transparent pointer-events-none"></div>
-        </div>
+        <div
+          onClick={handleMapClick}
+          className="relative rounded-xl border-2 border-gray-700 h-96 overflow-hidden cursor-crosshair"
+        >
+          {/* Imagen del plano - Ajuste Completo */}
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-950/40">
+            <img
+              src={plantLayoutImage}
+              alt="Plano de planta"
+              className="w-full h-full object-contain"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-transparent to-transparent pointer-events-none"></div>
+          </div>
 
-        {/* Overlay de grid sutil */}
-        <div className="absolute inset-0 opacity-10">
-          <svg className="w-full h-full">
-            <defs>
-              <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
-                <path d="M 80 0 L 0 0 0 80" fill="none" stroke="white" strokeWidth="1" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-          </svg>
-        </div>
+          {/* Overlay de grid sutil */}
+          <div className="absolute inset-0 opacity-10">
+            <svg className="w-full h-full">
+              <defs>
+                <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+                  <path d="M 80 0 L 0 0 0 80" fill="none" stroke="white" strokeWidth="1" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" />
+            </svg>
+          </div>
 
-        {/* Location Points */}
-        {locations.map(location => {
-          const status = locationStatuses[location.id];
-          let color = 'bg-gray-600';
-          let shouldPulse = false;
-          let ringColor = 'ring-gray-500';
+          {/* Location Points */}
+          {locations.map(location => {
+            const status = locationStatuses[location.id];
+            let color = 'bg-gray-600';
+            let shouldPulse = false;
+            let ringColor = 'ring-gray-500';
 
-          if (status?.pending) {
-            color = 'bg-red-500';
-            shouldPulse = true;
-            ringColor = 'ring-red-500/50';
-          } else if (status?.inTransit) {
-            color = 'bg-yellow-500';
-            shouldPulse = true;
-            ringColor = 'ring-yellow-500/50';
-          }
+            if (status?.pending) {
+              color = 'bg-red-500';
+              shouldPulse = true;
+              ringColor = 'ring-red-500/50';
+            } else if (status?.inTransit) {
+              color = 'bg-yellow-500';
+              shouldPulse = true;
+              ringColor = 'ring-yellow-500/50';
+            }
 
-          return (
-            <motion.div
-              key={location.id}
-              className="absolute"
-              style={{ left: `${location.x}%`, top: `${location.y}%` }}
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              whileHover={{ scale: 1.1 }}
-            >
-              <div className="relative -translate-x-1/2 -translate-y-1/2">
-                {shouldPulse && (
-                  <motion.div
-                    className={`absolute inset-0 ${color} rounded-full opacity-75`}
-                    animate={{ scale: [1, 1.5, 1.5], opacity: [0.5, 0, 0] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  />
-                )}
-                <div className={`relative z-10 ${ringColor} ring-4`}>
-                  <div className={`w-6 h-6 ${color} rounded-full flex items-center justify-center shadow-lg`}>
-                    <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+            return (
+              <motion.div
+                key={location.id}
+                className="absolute"
+                style={{ left: `${location.x}%`, top: `${location.y}%` }}
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                whileHover={{ scale: 1.1 }}
+              >
+                <div className="relative -translate-x-1/2 -translate-y-1/2">
+                  {shouldPulse && (
+                    <motion.div
+                      className={`absolute inset-0 ${color} rounded-full opacity-75`}
+                      animate={{ scale: [1, 1.5, 1.5], opacity: [0.5, 0, 0] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
+                  )}
+                  <div className={`relative z-10 ${ringColor} ring-4`}>
+                    <div className={`w-6 h-6 ${color} rounded-full flex items-center justify-center shadow-lg`}>
+                      <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                    </div>
                   </div>
-                </div>
-                <div className="absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                  <div className="bg-gray-900/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-700 min-w-[120px]">
-                    <p className="text-xs font-bold text-white text-center">{location.id}</p>
-                    <div className="flex items-center justify-center gap-2 mt-1">
-                      {status?.pending && (
-                        <span className="text-xs text-red-400 font-medium">Pendiente</span>
-                      )}
-                      {status?.inTransit && (
-                        <span className="text-xs text-yellow-400 font-medium">En tránsito</span>
-                      )}
-                      {!status?.pending && !status?.inTransit && (
-                        <span className="text-xs text-gray-400 font-medium">Normal</span>
-                      )}
+                  <div className="absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                    <div className="bg-gray-900/90 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-700 min-w-[120px]">
+                      <p className="text-xs font-bold text-white text-center">{location.id}</p>
+                      <div className="flex items-center justify-center gap-2 mt-1">
+                        {status?.pending && (
+                          <span className="text-xs text-red-400 font-medium">Pendiente</span>
+                        )}
+                        {status?.inTransit && (
+                          <span className="text-xs text-yellow-400 font-medium">En tránsito</span>
+                        )}
+                        {!status?.pending && !status?.inTransit && (
+                          <span className="text-xs text-gray-400 font-medium">Normal</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </motion.div>
-          );
-        })}
+              </motion.div>
+            );
+          })}
 
-        {/* Legend Overlay */}
-        <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
-          <h3 className="text-sm font-bold text-white mb-2">Leyenda de Áreas</h3>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-              <span className="text-xs text-gray-300">Producción</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              <span className="text-xs text-gray-300">Logística</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-              <span className="text-xs text-gray-300">Control</span>
+          {/* Legend Overlay */}
+          <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
+            <h3 className="text-sm font-bold text-white mb-2">Leyenda de Áreas</h3>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <span className="text-xs text-gray-300">Producción</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="text-xs text-gray-300">Logística</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                <span className="text-xs text-gray-300">Control</span>
+              </div>
             </div>
           </div>
         </div>
