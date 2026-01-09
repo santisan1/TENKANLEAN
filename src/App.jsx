@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDoc, getDocs, addDoc, onSnapshot, updateDoc, doc, query, where, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, getDoc, getDocs, addDoc, onSnapshot, updateDoc, doc, query, where, serverTimestamp, getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from 'firebase/firestore';
 import { Package, AlertTriangle, CheckCircle, Truck, Info, RotateCcw, Camera, Clock, MapPin, Activity, Wifi, Factory, Warehouse, Settings, Bell, User, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -17,7 +17,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-
+const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence); // Sesión persiste
 // Utility: Check if order is urgent (>15 min pending)
 const isUrgent = (timestamp, status) => {
   if (status !== 'PENDING' || !timestamp) return false;
@@ -30,6 +31,94 @@ const isUrgent = (timestamp, status) => {
 const formatTime = (timestamp) => {
   if (!timestamp) return '--:--';
   return timestamp.toDate().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+};
+
+
+// ============ NUEVO COMPONENTE LOGIN ============
+const LoginScreen = ({ onLoginSuccess }) => {
+  const [apellido, setApellido] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async () => {
+    if (!apellido || !password) {
+      setError('Complete todos los campos');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const email = `${apellido.toLowerCase()}@tte.com`;
+      await signInWithEmailAndPassword(auth, email, password);
+      onLoginSuccess();
+    } catch (err) {
+      setError('Credenciales incorrectas');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-950 flex items-center justify-center p-6">
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 p-8 w-full max-w-md"
+      >
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Warehouse className="w-10 h-10 text-blue-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-white">Acceso Almacén</h1>
+          <p className="text-gray-400 text-sm mt-2">Ingrese sus credenciales</p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm text-gray-300 font-medium mb-2 block">Apellido</label>
+            <input
+              type="text"
+              value={apellido}
+              onChange={(e) => setApellido(e.target.value)}
+              placeholder="Ej: Garcia"
+              className="w-full bg-gray-900/50 border-2 border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-300 font-medium mb-2 block">Contraseña</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••"
+              className="w-full bg-gray-900/50 border-2 border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white font-bold py-4 rounded-xl transition-all"
+          >
+            {loading ? 'Ingresando...' : 'INGRESAR'}
+          </button>
+        </div>
+
+        <div className="mt-6 text-center text-xs text-gray-500">
+          ¿Problemas para acceder? Contacte a TI
+        </div>
+      </motion.div>
+    </div>
+  );
 };
 // Function to check for existing active orders
 const checkExistingOrder = async (cardId) => {
@@ -70,13 +159,25 @@ const checkExistingOrder = async (cardId) => {
 };
 // Component: Operator View (Mobile)
 const OperatorView = () => {
+
+  const [currentUser, setCurrentUser] = useState(null); // NUEVO
+  const [authChecked, setAuthChecked] = useState(false); // NUEVO
   const [cardId, setCardId] = useState('');
+  // ... resto de los useState existentes
   const [scanning, setScanning] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [autoSubmitted, setAutoSubmitted] = useState(false);
   const [existingOrderInfo, setExistingOrderInfo] = useState(null);
   const [lastScanTime, setLastScanTime] = useState(0);
 
+  // ============ DETECTAR USUARIO LOGUEADO ============
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthChecked(true);
+    });
+    return () => unsubscribe();
+  }, []);
   const clearFeedback = () => {
     setFeedback(null);
     setExistingOrderInfo(null);
@@ -108,7 +209,6 @@ const OperatorView = () => {
 
   const handleScan = async (scannedId) => {
     const now = Date.now();
-    // Evita escaneos accidentales múltiples seguidos (rebote)
     if (now - lastScanTime < 5000) {
       setFeedback({ type: 'error', message: 'Aguarde un momento entre escaneos' });
       return;
@@ -121,67 +221,89 @@ const OperatorView = () => {
     setExistingOrderInfo(null);
 
     try {
-      // 1. Verificamos si la tarjeta existe en el Maestro de Materiales
+      // 1. Verificar tarjeta
       const cardRef = doc(db, 'kanban_cards', scannedId);
       const cardSnap = await getDoc(cardRef);
 
       if (!cardSnap.exists()) {
-        setFeedback({ type: 'error', message: 'Tarjeta NO REGISTRADA en el sistema.' });
+        setFeedback({ type: 'error', message: 'Tarjeta NO REGISTRADA' });
         setScanning(false);
         return;
       }
 
       const card = cardSnap.data();
 
-      // 2. BUSQUEDA DE DUPLICADOS: Verificamos si ya hay un pedido activo
+      // 2. Buscar pedido existente
       const existingOrder = await checkExistingOrder(scannedId);
 
-      if (existingOrder.exists) {
-        // Calculamos cuánto tiempo lleva esperando el pedido original
-        const pedidoOriginalTime = existingOrder.timestamp.toMillis();
-        const minutosEspera = Math.floor((Date.now() - pedidoOriginalTime) / 60000);
+      // ========== CASO A: USUARIO NO LOGUEADO (PRODUCCIÓN) ==========
+      if (!currentUser) {
+        if (existingOrder.exists) {
+          const minutosEspera = Math.floor((Date.now() - existingOrder.timestamp.toMillis()) / 60000);
+          setExistingOrderInfo({
+            orderId: existingOrder.orderId,
+            status: existingOrder.status,
+            timestamp: existingOrder.timestamp,
+            location: existingOrder.location,
+            partNumber: existingOrder.partNumber
+          });
 
-        setExistingOrderInfo({
-          orderId: existingOrder.orderId,
-          status: existingOrder.status,
-          timestamp: existingOrder.timestamp,
-          location: existingOrder.location,
-          partNumber: existingOrder.partNumber
+          const mensajeEstado = existingOrder.status === 'PENDING' ? 'PENDIENTE' : 'EN CAMINO';
+          setFeedback({
+            type: 'info',
+            message: `Material ya solicitado y está ${mensajeEstado}.\nEsperando hace ${minutosEspera} min.`
+          });
+          setScanning(false);
+          return;
+        }
+
+        // Crear pedido nuevo
+        await addDoc(collection(db, 'active_orders'), {
+          cardId: scannedId,
+          partNumber: card.partNumber,
+          description: card.description,
+          location: card.location,
+          standardPack: card.standardPack,
+          timestamp: serverTimestamp(),
+          status: 'PENDING',
+          operatorId: 'Produccion',
+          createdAt: serverTimestamp()
         });
-
-        const mensajeEstado = existingOrder.status === 'PENDING'
-          ? 'ya fue solicitado y está PENDIENTE'
-          : 'ya está EN CAMINO';
 
         setFeedback({
-          type: 'info',
-          message: `¡AVISO!\nEste material ${mensajeEstado}.\nEsperando hace ${minutosEspera} min.\nEvitemos sobre-stock.`
+          type: 'success',
+          message: `✓ Pedido confirmado para ${card.location}\n${card.partNumber} solicitado.`
         });
-
-        setScanning(false);
-        return; // CORTA LA EJECUCIÓN: No crea el pedido nuevo
       }
 
-      // 3. SI NO HAY DUPLICADO: Crea el nuevo pedido
-      await addDoc(collection(db, 'active_orders'), {
-        cardId: scannedId,
-        partNumber: card.partNumber,
-        description: card.description,
-        location: card.location,
-        standardPack: card.standardPack,
-        timestamp: serverTimestamp(),
-        status: 'PENDING',
-        createdAt: serverTimestamp()
-      });
-
-      setFeedback({
-        type: 'success',
-        message: `✓ Pedido confirmado para ${card.location}\n${card.partNumber} solicitado.`
-      });
+      // ========== CASO B: USUARIO LOGUEADO (ALMACÉN) ==========
+      else {
+        if (existingOrder.exists && existingOrder.status === 'IN_TRANSIT') {
+          // Mostrar botón de confirmación de entrega
+          setExistingOrderInfo({
+            ...existingOrder,
+            showDeliveryButton: true
+          });
+          setFeedback({
+            type: 'info',
+            message: 'Material en tránsito detectado.\nConfirme la entrega.'
+          });
+        } else if (existingOrder.exists && existingOrder.status === 'PENDING') {
+          setFeedback({
+            type: 'info',
+            message: 'Pedido pendiente. Marque como "En Tránsito" desde el Dashboard.'
+          });
+        } else {
+          setFeedback({
+            type: 'error',
+            message: 'No hay pedido activo para este material.'
+          });
+        }
+      }
 
     } catch (error) {
       console.error('Error:', error);
-      setFeedback({ type: 'error', message: 'Error de conexión. Intente nuevamente.' });
+      setFeedback({ type: 'error', message: 'Error de conexión' });
     }
 
     setScanning(false);
@@ -297,6 +419,32 @@ const OperatorView = () => {
                   <AlertTriangle className="w-4 h-4" />
                   <span>Cancelar este pedido</span>
                 </button>
+                {existingOrderInfo.showDeliveryButton && currentUser && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const userName = currentUser.email.split('@')[0];
+                        await updateDoc(doc(db, 'active_orders', existingOrderInfo.orderId), {
+                          status: 'DELIVERED',
+                          deliveredAt: serverTimestamp(),
+                          deliveredBy: userName
+                        });
+
+                        setFeedback({
+                          type: 'success',
+                          message: `✓ Entrega confirmada por ${userName}`
+                        });
+                        setExistingOrderInfo(null);
+                      } catch (error) {
+                        setFeedback({ type: 'error', message: 'Error al confirmar entrega' });
+                      }
+                    }}
+                    className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle className="w-5 h-5" />
+                    <span>CONFIRMAR ENTREGA EN PUESTO</span>
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
@@ -990,6 +1138,43 @@ const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
 // Main App
 export default function App() {
   const [isMobile] = useState(window.innerWidth < 768);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthChecked(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (!authChecked && isMobile) {
+    return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="text-white">Cargando...</div>
+    </div>;
+  }
+
+  // Mostrar login solo si presionan "Modo Almacén"
+  if (showLogin && !currentUser && isMobile) {
+    return <LoginScreen onLoginSuccess={() => setShowLogin(false)} />;
+  }
+
+  // Botón para acceder a login (producción)
+  if (isMobile && !currentUser) {
+    return (
+      <div className="relative">
+        <OperatorView />
+        <button
+          onClick={() => setShowLogin(true)}
+          className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm"
+        >
+          Modo Almacén
+        </button>
+      </div>
+    );
+  }
 
   return isMobile ? <OperatorView /> : <SupplyChainView />;
 }
