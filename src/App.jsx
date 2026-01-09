@@ -831,18 +831,29 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
         const userName = currentUser.email.split('@')[0];
 
         // Si hay pedido EN TRÁNSITO → ENTREGA DIRECTA
+        // REEMPLAZÁ EL BLOQUE DEL "if (existingOrder.status === 'IN_TRANSIT')" POR ESTE:
         if (existingOrder.exists && existingOrder.status === 'IN_TRANSIT') {
-          await updateDoc(doc(db, 'active_orders', existingOrder.orderId), {
+          const orderRef = doc(db, 'active_orders', existingOrder.orderId);
+          const userName = currentUser.email.split('@')[0];
+
+          // 1. PASAR A COMPLETADOS
+          await addDoc(collection(db, 'completed_orders'), {
+            ...existingOrder,
             status: 'DELIVERED',
             deliveredAt: serverTimestamp(),
-            deliveredBy: userName
+            deliveredBy: userName,
+            // Saneamiento de datos
+            complexityWeight: parseInt(existingOrder.complexityWeight || 1),
+            targetLeadTime: parseInt(existingOrder.targetLeadTime || 30)
           });
+
+          // 2. ELIMINAR DE ACTIVOS
+          await deleteDoc(orderRef);
 
           setFeedback({
             type: 'success',
-            message: `✅ ENTREGA CONFIRMADA\n📍 ${card.location}\n👤 Por: ${userName}\n⏱️ ${new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
+            message: `✅ ENTREGA FINALIZADA\n📦 ${existingOrder.partNumber}\n👤 Por: ${userName}`
           });
-
           setScanning(false);
           return;
         }
@@ -1130,27 +1141,30 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
           takenBy: currentUser.email.split('@')[0]
         });
       } else if (newStatus === 'DELIVERED') {
+        // BUSCÁ EL "else if (newStatus === 'DELIVERED')" Y REEMPLAZALO POR ESTE:
+      } else if (newStatus === 'DELIVERED') {
+        const orderRef = doc(db, 'active_orders', orderId);
         const orderSnap = await getDoc(orderRef);
-        if (!orderSnap.exists()) return;
-        const data = orderSnap.data();
 
-        // Convertimos los strings de Firebase a números para el cálculo
-        const target = parseInt(data.targetLeadTime) || 30;
-        const startTime = data.timestamp?.toMillis() || Date.now();
-        const leadTimeTotal = (Date.now() - startTime) / 60000;
+        if (orderSnap.exists()) {
+          const data = orderSnap.data();
+          const userName = currentUser.email.split('@')[0];
 
-        // 1. CREAR: Esto genera la colección 'completed_orders' automáticamente
-        await addDoc(collection(db, 'completed_orders'), {
-          ...data,
-          status: 'DELIVERED',
-          deliveredAt: serverTimestamp(),
-          deliveredBy: currentUser.email.split('@')[0],
-          finalLeadTime: Math.round(leadTimeTotal),
-          isSuccess: leadTimeTotal <= target // SLA check
-        });
+          // 1. CREAMOS el documento en la carpeta nueva (completed_orders)
+          await addDoc(collection(db, 'completed_orders'), {
+            ...data,
+            status: 'DELIVERED',
+            deliveredAt: serverTimestamp(),
+            deliveredBy: userName,
+            // Convertimos los strings a números para que los KPIs no rompan
+            complexityWeight: parseInt(data.complexityWeight || 1),
+            targetLeadTime: parseInt(data.targetLeadTime || 30),
+            finalLeadTimeMinutes: Math.round((Date.now() - data.timestamp.toMillis()) / 60000)
+          });
 
-        // 2. BORRAR de activos (importante para la limpieza del Dashboard)
-        await deleteDoc(orderRef);
+          // 2. BORRAMOS el original de active_orders (Asegurate de importar deleteDoc arriba)
+          await deleteDoc(orderRef);
+        }
       }
     } catch (error) { console.error('Error al cerrar pedido:', error); }
   };
