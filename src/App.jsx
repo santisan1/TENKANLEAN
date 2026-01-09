@@ -664,49 +664,96 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [time, setTime] = useState(new Date());
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Agregar estas utilidades arriba de SupplyChainView
+  const playAlertSound = () => {
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); // Sonido de "ping" industrial
+    audio.play().catch(e => console.log("Esperando interacción para audio"));
+  };
+
+  const sendNotification = (partNumber, location) => {
+    if (Notification.permission === "granted") {
+      new Notification("🚨 NUEVO PEDIDO KANBAN", {
+        body: `Material: ${partNumber} en ${location}`,
+        icon: "/favicon.ico" // O el logo de TTE
+      });
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+
+  const [prevPendingCount, setPrevPendingCount] = useState(0);
   useEffect(() => {
+    // 1. Pedir permiso para notificaciones apenas cargue
+    if (Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+
+    // 2. Definimos la query (Traemos los dos estados de una)
     const q = query(
       collection(db, 'active_orders'),
       where('status', 'in', ['PENDING', 'IN_TRANSIT'])
     );
 
-    const unsubscribe = onSnapshot(q,
-      (snapshot) => {
-        setIsConnected(true);
-        const ordersData = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data
-          };
-        });
+    // 3. Iniciamos el listener
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setIsConnected(true);
 
-        ordersData.sort((a, b) => {
-          if (!a.timestamp || !b.timestamp) return 0;
-          return b.timestamp.toMillis() - a.timestamp.toMillis();
-        });
+      // Procesamos los datos
+      const ordersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-        setOrders(ordersData);
+      // Contamos cuántos hay pendientes ahora
+      const currentPendingCount = ordersData.filter(o => o.status === 'PENDING').length;
 
-        const pending = ordersData.filter(o => o.status === 'PENDING').length;
-        const inTransit = ordersData.filter(o => o.status === 'IN_TRANSIT').length;
+      // 🔥 LÓGICA DE ALARMA
+      // Usamos una función dentro de setPrevPendingCount para comparar con el valor anterior
+      setPrevPendingCount(prev => {
+        if (currentPendingCount > prev) {
+          // Si hay más que antes, suena el buzzer
+          playAlertSound();
 
-        setStats({ pending, inTransit, delivered: 0 });
-      },
-      (error) => {
-        console.error('Firestore listener error:', error);
-        setIsConnected(false);
-      }
-    );
+          // Notificación de Chrome
+          const lastOrder = ordersData.find(o => o.status === 'PENDING');
+          if (lastOrder) sendNotification(lastOrder.partNumber, lastOrder.location);
 
+          // Título titilante
+          let toggled = false;
+          const interval = setInterval(() => {
+            document.title = toggled ? "⚠️ NUEVO PEDIDO" : "TTE E-KANBAN";
+            toggled = !toggled;
+          }, 500);
+          setTimeout(() => { clearInterval(interval); document.title = "TTE E-KANBAN"; }, 5000);
+        }
+        return currentPendingCount; // Guardamos el nuevo conteo para la próxima comparación
+      });
+
+      // 4. Actualizamos el resto del Dashboard
+      ordersData.sort((a, b) => {
+        if (!a.timestamp || !b.timestamp) return 0;
+        return b.timestamp.toMillis() - a.timestamp.toMillis();
+      });
+
+      setOrders(ordersData);
+      setStats({
+        pending: currentPendingCount,
+        inTransit: ordersData.filter(o => o.status === 'IN_TRANSIT').length,
+        delivered: 0
+      });
+    }, (error) => {
+      console.error('Firestore error:', error);
+      setIsConnected(false);
+    });
+
+    // 5. Limpieza al desmontar el componente
     return () => unsubscribe();
-  }, []);
+
+  }, []); // El array vacío es clave: el listener se pone una sola vez y listo
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
