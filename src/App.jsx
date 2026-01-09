@@ -631,15 +631,7 @@ const SupplyChainView = () => {
   }, []);
 
   // ========== SI NO HAY USUARIO, MOSTRAR LOGIN ==========
-  if (!authChecked) {
-    return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-white">Verificando acceso...</div>
-    </div>;
-  }
 
-  if (!currentUser) {
-    return <LoginScreen onLoginSuccess={() => { }} />;
-  }
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -690,6 +682,15 @@ const SupplyChainView = () => {
     };
   }, []);
 
+  if (!authChecked) {
+    return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="text-white">Verificando acceso...</div>
+    </div>;
+  }
+
+  if (!currentUser) {
+    return <LoginScreen onLoginSuccess={() => { }} />;
+  }
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       const orderRef = doc(db, 'active_orders', orderId);
