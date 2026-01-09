@@ -738,22 +738,7 @@ const KPIView = ({ currentUser }) => {
               ))}
             </div>
           </div>
-          {/* Ejemplo de cómo mostrar los dos indicadores en tu tabla */}
-          <div className="flex flex-col gap-2 w-full">
 
-
-            {/* Barra de Reacción (para ver si prepara antes de aceptar) */}
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-500">T. Reacción:</span>
-              <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                <div
-                  className={`h-full ${op.reactionRank > 10 ? 'bg-red-500' : 'bg-green-500'}`}
-                  style={{ width: `${Math.min(op.reactionRank * 5, 100)}%` }}
-                />
-              </div>
-              <span className="text-[10px] font-mono">{op.reactionRank}m</span>
-            </div>
-          </div>
           {/* Materiales Problemáticos */}
           {kpiData.problemMaterials.length > 0 && (
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-red-800/50 p-6">
