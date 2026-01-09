@@ -13,11 +13,7 @@ import {
 import { Package, AlertTriangle, LogOut, CheckCircle, Truck, Info, RotateCcw, Camera, Clock, MapPin, Activity, Wifi, Factory, Warehouse, Settings, Bell, User, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import {
-  Package, AlertTriangle, CheckCircle, Truck, Info, RotateCcw,
-  Camera, Clock, MapPin, Activity, Wifi, Factory, Warehouse,
-  Settings, Bell, User, BarChart3, LogOut // Agregá Settings y LogOut aquí
-} from 'lucide-react';
+
 // Firebase Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBMHgf9gtc9NZbJXxODxVWfB17Y81geUfo",
@@ -171,11 +167,236 @@ const checkExistingOrder = async (cardId) => {
     return { exists: false, error: error.message };
   }
 };
-// Component: Operator View (Mobile)
-const OperatorView = () => {
 
-  const [currentUser, setCurrentUser] = useState(null); // NUEVO
-  const [authChecked, setAuthChecked] = useState(false); // NUEVO
+// ============ COMPONENTE: VISTA DE KPIs ============
+const KPIView = ({ currentUser }) => {
+  const [kpiData, setKpiData] = useState({
+    avgLeadTime: 0,
+    topMaterials: [],
+    staffPerformance: [],
+    todayDelivered: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchKPIs = async () => {
+      try {
+        // 1. Obtener pedidos entregados hoy
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const deliveredQuery = query(
+          collection(db, 'active_orders'),
+          where('status', '==', 'DELIVERED'),
+          where('deliveredAt', '>=', today)
+        );
+
+        const snapshot = await getDocs(deliveredQuery);
+        const orders = snapshot.docs.map(doc => doc.data());
+
+        // 2. Calcular Lead Time Promedio
+        const leadTimes = orders
+          .filter(o => o.timestamp && o.deliveredAt)
+          .map(o => {
+            const created = o.timestamp.toMillis();
+            const delivered = o.deliveredAt.toMillis();
+            return (delivered - created) / 60000; // minutos
+          });
+
+        const avgLeadTime = leadTimes.length > 0
+          ? Math.round(leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length)
+          : 0;
+
+        // 3. Top 5 Materiales más pedidos
+        const materialCount = {};
+        orders.forEach(o => {
+          const key = o.partNumber;
+          materialCount[key] = (materialCount[key] || 0) + 1;
+        });
+
+        const topMaterials = Object.entries(materialCount)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([part, count]) => ({ partNumber: part, count }));
+
+        // 4. Rendimiento por Staff
+        const staffCount = {};
+        orders.forEach(o => {
+          if (o.deliveredBy) {
+            staffCount[o.deliveredBy] = (staffCount[o.deliveredBy] || 0) + 1;
+          }
+        });
+
+        const staffPerformance = Object.entries(staffCount)
+          .sort((a, b) => b[1] - a[1])
+          .map(([name, count]) => ({ name, deliveries: count }));
+
+        setKpiData({
+          avgLeadTime,
+          topMaterials,
+          staffPerformance,
+          todayDelivered: orders.length
+        });
+        setLoading(false);
+
+      } catch (error) {
+        console.error('Error fetching KPIs:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchKPIs();
+    const interval = setInterval(fetchKPIs, 30000); // Actualiza cada 30 seg
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950">
+      {/* Header igual al Dashboard */}
+      <div className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                <BarChart3 className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-white">TTE E-KANBAN</h1>
+                <p className="text-xs text-gray-400">Dashboard • Estadísticas</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-blue-400" />
+              </div>
+              <span className="text-sm font-bold text-white">
+                {currentUser?.email.split('@')[0].toUpperCase()}
+              </span>
+              <button
+                onClick={() => signOut(auth)}
+                className="ml-2 p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+              >
+                <LogOut className="w-5 h-5 text-gray-400 hover:text-red-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Tarjetas de KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Clock className="w-8 h-8 text-blue-400" />
+              <div>
+                <p className="text-sm text-gray-400">Lead Time Promedio</p>
+                <p className="text-3xl font-bold text-white">{kpiData.avgLeadTime}<span className="text-lg text-gray-400">min</span></p>
+              </div>
+            </div>
+            <div className="text-xs text-blue-300">Desde pedido hasta entrega</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/20 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <CheckCircle className="w-8 h-8 text-green-400" />
+              <div>
+                <p className="text-sm text-gray-400">Entregas Hoy</p>
+                <p className="text-3xl font-bold text-white">{kpiData.todayDelivered}</p>
+              </div>
+            </div>
+            <div className="text-xs text-green-300">Pedidos completados</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/20 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Package className="w-8 h-8 text-purple-400" />
+              <div>
+                <p className="text-sm text-gray-400">Materiales Activos</p>
+                <p className="text-3xl font-bold text-white">{kpiData.topMaterials.length}</p>
+              </div>
+            </div>
+            <div className="text-xs text-purple-300">Diferentes SKUs movidos</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border border-orange-500/20 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <User className="w-8 h-8 text-orange-400" />
+              <div>
+                <p className="text-sm text-gray-400">Personal Activo</p>
+                <p className="text-3xl font-bold text-white">{kpiData.staffPerformance.length}</p>
+              </div>
+            </div>
+            <div className="text-xs text-orange-300">Repartidores trabajando</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top 5 Materiales */}
+          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <Package className="w-6 h-6 text-blue-400" />
+              Top 5 Materiales Más Solicitados
+            </h2>
+            <div className="space-y-4">
+              {kpiData.topMaterials.map((mat, idx) => (
+                <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                      <span className="font-bold text-blue-400">#{idx + 1}</span>
+                    </div>
+                    <div>
+                      <p className="font-mono font-bold text-white">{mat.partNumber}</p>
+                      <p className="text-xs text-gray-400">{mat.count} pedidos</p>
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-400">{mat.count}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Rendimiento del Personal */}
+          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <User className="w-6 h-6 text-green-400" />
+              Rendimiento Logístico
+            </h2>
+            <div className="space-y-4">
+              {kpiData.staffPerformance.map((staff, idx) => (
+                <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                      <User className="w-5 h-5 text-green-400" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-white capitalize">{staff.name}</p>
+                      <p className="text-xs text-gray-400">{staff.deliveries} entregas completadas</p>
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-green-400">{staff.deliveries}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+// Component: Operator View (Mobile)
+const OperatorView = ({ currentUser: userFromApp }) => {
+
+  const [currentUser, setCurrentUser] = useState(userFromApp); // Recibe desde App
+  const [authChecked, setAuthChecked] = useState(true); // Ya no lo necesitamos verificar acáVO
   const [cardId, setCardId] = useState('');
   // ... resto de los useState existentes
   const [scanning, setScanning] = useState(false);
@@ -185,18 +406,7 @@ const OperatorView = () => {
   const [lastScanTime, setLastScanTime] = useState(0);
 
   // ============ DETECTAR USUARIO LOGUEADO ============
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthChecked(true);
-    });
-    return () => unsubscribe();
-  }, []);
-  const clearFeedback = () => {
-    setFeedback(null);
-    setExistingOrderInfo(null);
-    setCardId('');
-  };
+
   // AUTO-SUBMIT FROM URL PARAMETER
   useEffect(() => {
     if (autoSubmitted) return;
@@ -214,6 +424,11 @@ const OperatorView = () => {
       }, 500);
     }
   }, [autoSubmitted]);
+
+  // Sincroniza currentUser cuando cambia desde App
+  useEffect(() => {
+    setCurrentUser(userFromApp);
+  }, [userFromApp]);
 
   const simulateScan = () => {
     const mockId = `MAT-${Math.floor(Math.random() * 100).toString().padStart(3, '0')}`;
@@ -356,9 +571,29 @@ const OperatorView = () => {
                 <p className="text-xs text-gray-400">Bobinado • Punto de Consumo</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-green-400 font-medium">ONLINE</span>
+            <div className="flex items-center gap-3">
+              {currentUser ? (
+                <>
+                  <div className="flex items-center gap-2 bg-blue-500/10 px-3 py-1 rounded-lg">
+                    <User className="w-4 h-4 text-blue-400" />
+                    <span className="text-xs text-blue-300 font-medium">
+                      {currentUser.email.split('@')[0].toUpperCase()}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => signOut(auth)}
+                    className="p-2 hover:bg-red-500/10 rounded-lg transition-colors group"
+                    title="Cerrar sesión"
+                  >
+                    <LogOut className="w-4 h-4 text-gray-400 group-hover:text-red-400" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-green-400 font-medium">PRODUCCIÓN</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -619,23 +854,19 @@ const OperatorView = () => {
 };
 
 // Component: Supply Chain Dashboard
-const SupplyChainView = () => {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
+const SupplyChainView = ({ currentUser: userFromApp }) => {
+  const [currentUser, setCurrentUser] = useState(userFromApp);
+  const [authChecked, setAuthChecked] = useState(true);
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({ pending: 0, inTransit: 0, delivered: 0 });
   const [isConnected, setIsConnected] = useState(false);
   const [time, setTime] = useState(new Date());
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' o 'kpis'
 
   // ========== DETECTAR USUARIO LOGUEADO ==========
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthChecked(true);
-    });
-    return () => unsubscribe();
-  }, []);
-
+    setCurrentUser(userFromApp);
+  }, [userFromApp]);
   // ========== SI NO HAY USUARIO, MOSTRAR LOGIN ==========
 
 
@@ -688,15 +919,7 @@ const SupplyChainView = () => {
     };
   }, []);
 
-  if (!authChecked) {
-    return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-white">Verificando acceso...</div>
-    </div>;
-  }
 
-  if (!currentUser) {
-    return <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />;
-  }
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       const orderRef = doc(db, 'active_orders', orderId);
@@ -725,7 +948,10 @@ const SupplyChainView = () => {
     if (order.status === 'IN_TRANSIT') acc[loc].inTransit = true;
     return acc;
   }, {});
-
+  // Si está en la pestaña de KPIs, mostrar esa vista
+  if (activeTab === 'kpis') {
+    return <KPIView currentUser={currentUser} />;
+  }
   return (
     <div className="min-h-screen bg-gray-950">
       {/* Top Navigation Bar */}
@@ -736,7 +962,29 @@ const SupplyChainView = () => {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                   <Factory className="w-6 h-6 text-white" />
+
                 </div>
+                <div className="flex items-center gap-2 ml-6">
+                  <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'dashboard'
+                      ? 'bg-blue-500 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                      }`}
+                  >
+                    Pedidos Activos
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('kpis')}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'kpis'
+                      ? 'bg-blue-500 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                      }`}
+                  >
+                    📊 Estadísticas
+                  </button>
+                </div>
+
                 <div>
                   <h1 className="text-lg font-bold text-white">TTE E-KANBAN</h1>
                   <p className="text-xs text-gray-400">Dashboard • Supply Chain</p>
@@ -764,8 +1012,23 @@ const SupplyChainView = () => {
                 <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
                   <Settings className="w-5 h-5 text-gray-400" />
                 </button>
-                <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-gray-400" />
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-400">Almacén</div>
+                    <div className="text-sm font-bold text-white">
+                      {currentUser?.email.split('@')[0].toUpperCase()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => signOut(auth)}
+                    className="ml-2 p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                    title="Cerrar sesión"
+                  >
+                    <LogOut className="w-5 h-5 text-gray-400 hover:text-red-400" />
+                  </button>
                 </div>
               </div>
             </div>
