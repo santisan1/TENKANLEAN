@@ -935,7 +935,7 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
                 status="PENDING"
                 orders={orders.filter(o => o.status === 'PENDING')}
                 onAction={(id) => handleStatusChange(id, 'IN_TRANSIT')}
-                actionLabel="DESPACHAR"
+                actionLabel="Tomar pedido"
                 actionIcon={<Truck className="w-4 h-4" />}
                 color="red"
                 showAction={true}
