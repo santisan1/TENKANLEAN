@@ -13,6 +13,20 @@ import {
 import { Package, AlertTriangle, LogOut, CheckCircle, Truck, Info, RotateCcw, Camera, Clock, MapPin, Activity, Wifi, Factory, Warehouse, Settings, Bell, User, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const GlobalStyles = () => (
+  <style jsx global>{`
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: linear-gradient(to bottom, #111827, #030712);
+      color: white;
+    }
+    * {
+      box-sizing: border-box;
+    }
+  `}</style>
+);
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -393,7 +407,7 @@ const KPIView = ({ currentUser }) => {
   );
 };
 // Component: Operator View (Mobile)
-const OperatorView = ({ currentUser: userFromApp }) => {
+const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
 
   const [currentUser, setCurrentUser] = useState(userFromApp); // Recibe desde App
   const [authChecked, setAuthChecked] = useState(true); // Ya no lo necesitamos verificar acáVO
@@ -557,7 +571,9 @@ const OperatorView = ({ currentUser: userFromApp }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-950">
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-950 w-full overflow-x-hidden">
+      <GlobalStyles /> {/* Agrega esto */}
+
       {/* Industrial Header */}
       <div className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm">
         <div className="max-w-md mx-auto px-6 py-4">
@@ -581,7 +597,11 @@ const OperatorView = ({ currentUser: userFromApp }) => {
                     </span>
                   </div>
                   <button
-                    onClick={() => signOut(auth)}
+                    onClick={() => {
+                      signOut(auth).then(() => {
+                        onLogout?.(); // Llama al handler de logout
+                      });
+                    }}
                     className="p-2 hover:bg-red-500/10 rounded-lg transition-colors group"
                     title="Cerrar sesión"
                   >
@@ -919,7 +939,9 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
     };
   }, []);
 
-
+  const handleLogout = async () => {
+    await onLogout?.();
+  };
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       const orderRef = doc(db, 'active_orders', orderId);
@@ -954,7 +976,7 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
   }
   return (
     <div className="min-h-screen bg-gray-950">
-      {/* Top Navigation Bar */}
+      {/* Top Navigation Bar - SIEMPRE visible */}
       <div className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
@@ -962,35 +984,37 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                   <Factory className="w-6 h-6 text-white" />
-
                 </div>
-                <div className="flex items-center gap-2 ml-6">
-                  <button
-                    onClick={() => setActiveTab('dashboard')}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'dashboard'
-                      ? 'bg-blue-500 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                      }`}
-                  >
-                    Pedidos Activos
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('kpis')}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'kpis'
-                      ? 'bg-blue-500 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                      }`}
-                  >
-                    📊 Estadísticas
-                  </button>
-                </div>
-
                 <div>
                   <h1 className="text-lg font-bold text-white">TTE E-KANBAN</h1>
                   <p className="text-xs text-gray-400">Dashboard • Supply Chain</p>
                 </div>
               </div>
+
+              {/* Botones de navegación */}
+              <div className="flex items-center gap-2 ml-6">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'dashboard'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                    }`}
+                >
+                  📋 Pedidos Activos
+                </button>
+                <button
+                  onClick={() => setActiveTab('kpis')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'kpis'
+                    ? 'bg-blue-500 text-white'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                    }`}
+                >
+                  📊 Estadísticas
+                </button>
+              </div>
             </div>
+
+
 
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
@@ -1023,11 +1047,15 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
                     </div>
                   </div>
                   <button
-                    onClick={() => signOut(auth)}
-                    className="ml-2 p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                    onClick={() => {
+                      signOut(auth).then(() => {
+                        onLogout?.(); // Llama al handler de logout
+                      });
+                    }}
+                    className="p-2 hover:bg-red-500/10 rounded-lg transition-colors group"
                     title="Cerrar sesión"
                   >
-                    <LogOut className="w-5 h-5 text-gray-400 hover:text-red-400" />
+                    <LogOut className="w-4 h-4 text-gray-400 group-hover:text-red-400" />
                   </button>
                 </div>
               </div>
@@ -1467,6 +1495,7 @@ const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
 
 // Main App
 // --- ESTA DEBE SER LA ÚNICA FUNCIÓN APP AL FINAL ---
+// Reemplaza la función App actual con esta:
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1477,9 +1506,26 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
+
+      // Si el usuario se desloguea y está en desktop, mostrar login
+      if (!user && !window.innerWidth < 768) {
+        setShowLogin(true);
+      }
     });
     return () => unsubscribe();
   }, []);
+
+  // Manejar logout
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      // Después de logout, redirigir al login
+      setCurrentUser(null);
+      setShowLogin(true);
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -1492,32 +1538,16 @@ export default function App() {
   // Detectamos si es celular para la vista de operario
   const isMobile = window.innerWidth < 768;
 
-  if (isMobile) {
-    // Si el repartidor tocó "Acceso Almacén" y no está logueado, mostramos el login
-    if (showLogin && !currentUser) {
-      return <LoginScreen onLoginSuccess={() => setShowLogin(false)} />;
-    }
-
-    return (
-      <div className="relative">
-        {/* IMPORTANTE: Pasamos currentUser como prop aquí */}
-        <OperatorView currentUser={currentUser} />
-
-        {/* BOTÓN DISCRETO: Solo aparece si no hay nadie logueado */}
-        {!currentUser && (
-          <div className="fixed bottom-4 right-4 opacity-50 hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => setShowLogin(true)}
-              className="p-2 bg-gray-800 text-gray-400 rounded-full text-[10px] flex items-center gap-1 border border-gray-700"
-            >
-              <Settings className="w-3 h-3" /> Acceso Staff
-            </button>
-          </div>
-        )}
-      </div>
-    );
+  // Vista de Login (cuando se requiere)
+  if (showLogin || (!currentUser && !isMobile)) {
+    return <LoginScreen onLoginSuccess={() => setShowLogin(false)} />;
   }
 
-  // Si es PC, va directo al Dashboard (SupplyChainView)
-  return <SupplyChainView currentUser={currentUser} />;
+  // Vista móvil (OperatorView)
+  if (isMobile) {
+    return <OperatorView currentUser={currentUser} onLogout={handleLogout} />;
+  }
+
+  // Vista desktop (Dashboard/KPIs)
+  return <SupplyChainView currentUser={currentUser} onLogout={handleLogout} />;
 }
