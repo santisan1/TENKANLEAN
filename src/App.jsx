@@ -4,29 +4,12 @@ import {
   getFirestore, collection, getDoc, getDocs, addDoc,
   onSnapshot, updateDoc, doc, query, where, serverTimestamp
 } from 'firebase/firestore';
-
-// 2. Esto es SOLO para el Login (Auth) - ACÁ ESTABA EL ERROR
 import {
   getAuth, signInWithEmailAndPassword, signOut,
   onAuthStateChanged, setPersistence, browserLocalPersistence
 } from 'firebase/auth';
-import { Package, AlertTriangle, LogOut, CheckCircle, Truck, Info, RotateCcw, Camera, Clock, MapPin, Activity, Wifi, Factory, Warehouse, Settings, Bell, User, BarChart3 } from 'lucide-react';
+import { Package, AlertTriangle, LogOut, CheckCircle, Truck, Info, RotateCcw, Camera, Clock, MapPin, Activity, Factory, Warehouse, Settings, Bell, User, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-const GlobalStyles = () => (
-  <style jsx global>{`
-    html, body {
-      margin: 0;
-      padding: 0;
-      min-height: 100vh;
-      background: linear-gradient(to bottom, #111827, #030712);
-      color: white;
-    }
-    * {
-      box-sizing: border-box;
-    }
-  `}</style>
-);
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -42,7 +25,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence); // Sesión persiste
+setPersistence(auth, browserLocalPersistence);
+
 // Utility: Check if order is urgent (>15 min pending)
 const isUrgent = (timestamp, status) => {
   if (status !== 'PENDING' || !timestamp) return false;
@@ -57,8 +41,7 @@ const formatTime = (timestamp) => {
   return timestamp.toDate().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 };
 
-
-// ============ NUEVO COMPONENTE LOGIN ============
+// ============ COMPONENTE LOGIN ============
 const LoginScreen = ({ onLoginSuccess }) => {
   const [apellido, setApellido] = useState('');
   const [password, setPassword] = useState('');
@@ -144,6 +127,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
     </div>
   );
 };
+
 // Function to check for existing active orders
 const checkExistingOrder = async (cardId) => {
   try {
@@ -169,7 +153,8 @@ const checkExistingOrder = async (cardId) => {
         status: existingOrder.status,
         timestamp: existingOrder.timestamp,
         location: existingOrder.location,
-        partNumber: existingOrder.partNumber
+        partNumber: existingOrder.partNumber,
+        takenBy: existingOrder.takenBy || 'Sin asignar'
       };
     }
 
@@ -260,166 +245,132 @@ const KPIView = ({ currentUser }) => {
     };
 
     fetchKPIs();
-    const interval = setInterval(fetchKPIs, 30000); // Actualiza cada 30 seg
+    const interval = setInterval(fetchKPIs, 30000);
     return () => clearInterval(interval);
   }, []);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950">
-      {/* Header igual al Dashboard */}
-      <div className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-6 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                <BarChart3 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-white">TTE E-KANBAN</h1>
-                <p className="text-xs text-gray-400">Dashboard • Estadísticas</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
-                <User className="w-4 h-4 text-blue-400" />
-              </div>
-              <span className="text-sm font-bold text-white">
-                {currentUser?.email.split('@')[0].toUpperCase()}
-              </span>
-              <button
-                onClick={() => signOut(auth)}
-                className="ml-2 p-2 hover:bg-red-500/10 rounded-lg transition-colors"
-              >
-                <LogOut className="w-5 h-5 text-gray-400 hover:text-red-400" />
-              </button>
+    <div>
+      {/* Tarjetas de KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Clock className="w-8 h-8 text-blue-400" />
+            <div>
+              <p className="text-sm text-gray-400">Lead Time Promedio</p>
+              <p className="text-3xl font-bold text-white">{kpiData.avgLeadTime}<span className="text-lg text-gray-400">min</span></p>
             </div>
           </div>
+          <div className="text-xs text-blue-300">Desde pedido hasta entrega</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/20 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <CheckCircle className="w-8 h-8 text-green-400" />
+            <div>
+              <p className="text-sm text-gray-400">Entregas Hoy</p>
+              <p className="text-3xl font-bold text-white">{kpiData.todayDelivered}</p>
+            </div>
+          </div>
+          <div className="text-xs text-green-300">Pedidos completados</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/20 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Package className="w-8 h-8 text-purple-400" />
+            <div>
+              <p className="text-sm text-gray-400">Materiales Activos</p>
+              <p className="text-3xl font-bold text-white">{kpiData.topMaterials.length}</p>
+            </div>
+          </div>
+          <div className="text-xs text-purple-300">Diferentes SKUs movidos</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border border-orange-500/20 rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <User className="w-8 h-8 text-orange-400" />
+            <div>
+              <p className="text-sm text-gray-400">Personal Activo</p>
+              <p className="text-3xl font-bold text-white">{kpiData.staffPerformance.length}</p>
+            </div>
+          </div>
+          <div className="text-xs text-orange-300">Repartidores trabajando</div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Tarjetas de KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Clock className="w-8 h-8 text-blue-400" />
-              <div>
-                <p className="text-sm text-gray-400">Lead Time Promedio</p>
-                <p className="text-3xl font-bold text-white">{kpiData.avgLeadTime}<span className="text-lg text-gray-400">min</span></p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top 5 Materiales */}
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <Package className="w-6 h-6 text-blue-400" />
+            Top 5 Materiales Más Solicitados
+          </h2>
+          <div className="space-y-4">
+            {kpiData.topMaterials.map((mat, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                    <span className="font-bold text-blue-400">#{idx + 1}</span>
+                  </div>
+                  <div>
+                    <p className="font-mono font-bold text-white">{mat.partNumber}</p>
+                    <p className="text-xs text-gray-400">{mat.count} pedidos</p>
+                  </div>
+                </div>
+                <div className="text-2xl font-bold text-blue-400">{mat.count}</div>
               </div>
-            </div>
-            <div className="text-xs text-blue-300">Desde pedido hasta entrega</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/20 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <CheckCircle className="w-8 h-8 text-green-400" />
-              <div>
-                <p className="text-sm text-gray-400">Entregas Hoy</p>
-                <p className="text-3xl font-bold text-white">{kpiData.todayDelivered}</p>
-              </div>
-            </div>
-            <div className="text-xs text-green-300">Pedidos completados</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/20 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Package className="w-8 h-8 text-purple-400" />
-              <div>
-                <p className="text-sm text-gray-400">Materiales Activos</p>
-                <p className="text-3xl font-bold text-white">{kpiData.topMaterials.length}</p>
-              </div>
-            </div>
-            <div className="text-xs text-purple-300">Diferentes SKUs movidos</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border border-orange-500/20 rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <User className="w-8 h-8 text-orange-400" />
-              <div>
-                <p className="text-sm text-gray-400">Personal Activo</p>
-                <p className="text-3xl font-bold text-white">{kpiData.staffPerformance.length}</p>
-              </div>
-            </div>
-            <div className="text-xs text-orange-300">Repartidores trabajando</div>
+            ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top 5 Materiales */}
-          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
-            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <Package className="w-6 h-6 text-blue-400" />
-              Top 5 Materiales Más Solicitados
-            </h2>
-            <div className="space-y-4">
-              {kpiData.topMaterials.map((mat, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                      <span className="font-bold text-blue-400">#{idx + 1}</span>
-                    </div>
-                    <div>
-                      <p className="font-mono font-bold text-white">{mat.partNumber}</p>
-                      <p className="text-xs text-gray-400">{mat.count} pedidos</p>
-                    </div>
+        {/* Rendimiento del Personal */}
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <User className="w-6 h-6 text-green-400" />
+            Rendimiento Logístico
+          </h2>
+          <div className="space-y-4">
+            {kpiData.staffPerformance.map((staff, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-green-400" />
                   </div>
-                  <div className="text-2xl font-bold text-blue-400">{mat.count}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Rendimiento del Personal */}
-          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
-            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <User className="w-6 h-6 text-green-400" />
-              Rendimiento Logístico
-            </h2>
-            <div className="space-y-4">
-              {kpiData.staffPerformance.map((staff, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-green-400" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-white capitalize">{staff.name}</p>
-                      <p className="text-xs text-gray-400">{staff.deliveries} entregas completadas</p>
-                    </div>
+                  <div>
+                    <p className="font-bold text-white capitalize">{staff.name}</p>
+                    <p className="text-xs text-gray-400">{staff.deliveries} entregas completadas</p>
                   </div>
-                  <div className="text-2xl font-bold text-green-400">{staff.deliveries}</div>
                 </div>
-              ))}
-            </div>
+                <div className="text-2xl font-bold text-green-400">{staff.deliveries}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
 };
-// Component: Operator View (Mobile)
-const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
 
-  const [currentUser, setCurrentUser] = useState(userFromApp); // Recibe desde App
-  const [authChecked, setAuthChecked] = useState(true); // Ya no lo necesitamos verificar acáVO
+// ============ OPERATOR VIEW (MOBILE) ============
+const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
   const [cardId, setCardId] = useState('');
-  // ... resto de los useState existentes
   const [scanning, setScanning] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [autoSubmitted, setAutoSubmitted] = useState(false);
   const [existingOrderInfo, setExistingOrderInfo] = useState(null);
   const [lastScanTime, setLastScanTime] = useState(0);
 
-  // ============ DETECTAR USUARIO LOGUEADO ============
+  const clearFeedback = () => {
+    setFeedback(null);
+  };
 
   // AUTO-SUBMIT FROM URL PARAMETER
   useEffect(() => {
@@ -431,24 +382,18 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
     if (idFromUrl) {
       setCardId(idFromUrl.toUpperCase());
       setAutoSubmitted(true);
-
-      // Auto-submit after a brief delay
       setTimeout(() => {
         handleScan(idFromUrl.toUpperCase());
       }, 500);
     }
   }, [autoSubmitted]);
 
-  // Sincroniza currentUser cuando cambia desde App
-  useEffect(() => {
-    setCurrentUser(userFromApp);
-  }, [userFromApp]);
-
   const simulateScan = () => {
     const mockId = `MAT-${Math.floor(Math.random() * 100).toString().padStart(3, '0')}`;
     setCardId(mockId);
     handleScan(mockId);
   };
+
   const handleScan = async (scannedId) => {
     const now = Date.now();
     if (now - lastScanTime < 5000) {
@@ -571,9 +516,7 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-950 w-full overflow-x-hidden">
-      <GlobalStyles /> {/* Agrega esto */}
-
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-950">
       {/* Industrial Header */}
       <div className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm">
         <div className="max-w-md mx-auto px-6 py-4">
@@ -597,11 +540,7 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
                     </span>
                   </div>
                   <button
-                    onClick={() => {
-                      signOut(auth).then(() => {
-                        onLogout?.(); // Llama al handler de logout
-                      });
-                    }}
+                    onClick={onLogout}
                     className="p-2 hover:bg-red-500/10 rounded-lg transition-colors group"
                     title="Cerrar sesión"
                   >
@@ -612,6 +551,14 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
                 <>
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   <span className="text-xs text-green-400 font-medium">PRODUCCIÓN</span>
+                  {/* Botón discreto para login del almacén */}
+                  <button
+                    onClick={onOpenLogin}
+                    className="ml-2 p-2 bg-gray-800/50 hover:bg-gray-700 rounded-lg transition-colors"
+                    title="Acceso almacén"
+                  >
+                    <Settings className="w-4 h-4 text-gray-400" />
+                  </button>
                 </>
               )}
             </div>
@@ -632,6 +579,7 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
           <h2 className="text-2xl font-bold text-white mb-2">Escaneo de Material</h2>
           <p className="text-gray-400 text-sm">Escanee el código QR de la tarjeta Kanban para solicitar material</p>
         </motion.div>
+
         {/* Existing Order Info */}
         <AnimatePresence>
           {existingOrderInfo && (
@@ -679,6 +627,34 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
                   <Clock className="w-4 h-4" />
                   <span>El almacén está procesando tu solicitud</span>
                 </div>
+
+                {currentUser && existingOrderInfo.status === 'IN_TRANSIT' && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const userName = currentUser.email.split('@')[0];
+                        await updateDoc(doc(db, 'active_orders', existingOrderInfo.orderId), {
+                          status: 'DELIVERED',
+                          deliveredAt: serverTimestamp(),
+                          deliveredBy: userName
+                        });
+
+                        setFeedback({
+                          type: 'success',
+                          message: `✓ Entrega confirmada por ${userName}`
+                        });
+                        setExistingOrderInfo(null);
+                      } catch (error) {
+                        setFeedback({ type: 'error', message: 'Error al confirmar entrega' });
+                      }
+                    }}
+                    className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle className="w-5 h-5" />
+                    <span>CONFIRMAR ENTREGA EN PUESTO</span>
+                  </button>
+                )}
+
                 <button
                   onClick={async () => {
                     try {
@@ -707,37 +683,11 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
                   <AlertTriangle className="w-4 h-4" />
                   <span>Cancelar este pedido</span>
                 </button>
-                {existingOrderInfo.showDeliveryButton && currentUser && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const userName = currentUser.email.split('@')[0];
-                        await updateDoc(doc(db, 'active_orders', existingOrderInfo.orderId), {
-                          status: 'DELIVERED',
-                          deliveredAt: serverTimestamp(),
-                          deliveredBy: userName
-                        });
-
-                        setFeedback({
-                          type: 'success',
-                          message: `✓ Entrega confirmada por ${userName}`
-                        });
-                        setExistingOrderInfo(null);
-                      } catch (error) {
-                        setFeedback({ type: 'error', message: 'Error al confirmar entrega' });
-                      }
-                    }}
-                    className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="w-5 h-5" />
-                    <span>CONFIRMAR ENTREGA EN PUESTO</span>
-                  </button>
-                )}
               </div>
             </motion.div>
           )}
-
         </AnimatePresence>
+
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -873,22 +823,13 @@ const OperatorView = ({ currentUser: userFromApp, onLogout }) => {
   );
 };
 
-// Component: Supply Chain Dashboard
-const SupplyChainView = ({ currentUser: userFromApp }) => {
-  const [currentUser, setCurrentUser] = useState(userFromApp);
-  const [authChecked, setAuthChecked] = useState(true);
+// ============ SUPPLY CHAIN DASHBOARD (DESKTOP) ============
+const SupplyChainView = ({ currentUser, onLogout }) => {
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({ pending: 0, inTransit: 0, delivered: 0 });
   const [isConnected, setIsConnected] = useState(false);
   const [time, setTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' o 'kpis'
-
-  // ========== DETECTAR USUARIO LOGUEADO ==========
-  useEffect(() => {
-    setCurrentUser(userFromApp);
-  }, [userFromApp]);
-  // ========== SI NO HAY USUARIO, MOSTRAR LOGIN ==========
-
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -896,8 +837,6 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
   }, []);
 
   useEffect(() => {
-    console.log('Setting up Firestore listener...');
-
     const q = query(
       collection(db, 'active_orders'),
       where('status', 'in', ['PENDING', 'IN_TRANSIT'])
@@ -905,9 +844,7 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
 
     const unsubscribe = onSnapshot(q,
       (snapshot) => {
-        console.log('Snapshot received:', snapshot.size, 'documents');
         setIsConnected(true);
-
         const ordersData = snapshot.docs.map(doc => {
           const data = doc.data();
           return {
@@ -934,14 +871,9 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
       }
     );
 
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
-  const handleLogout = async () => {
-    await onLogout?.();
-  };
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       const orderRef = doc(db, 'active_orders', orderId);
@@ -949,10 +881,10 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
 
       if (newStatus === 'DELIVERED') {
         updateData.deliveredAt = serverTimestamp();
-        updateData.deliveredBy = currentUser.email.split('@')[0]; // Guarda quien entregó
+        updateData.deliveredBy = currentUser.email.split('@')[0];
       } else if (newStatus === 'IN_TRANSIT') {
         updateData.dispatchedAt = serverTimestamp();
-        updateData.takenBy = currentUser.email.split('@')[0]; // ✅ NUEVO: Guarda quien tomó el pedido
+        updateData.takenBy = currentUser.email.split('@')[0];
       }
 
       await updateDoc(orderRef, updateData);
@@ -970,13 +902,10 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
     if (order.status === 'IN_TRANSIT') acc[loc].inTransit = true;
     return acc;
   }, {});
-  // Si está en la pestaña de KPIs, mostrar esa vista
-  if (activeTab === 'kpis') {
-    return <KPIView currentUser={currentUser} />;
-  }
+
   return (
     <div className="min-h-screen bg-gray-950">
-      {/* Top Navigation Bar - SIEMPRE visible */}
+      {/* Top Navigation Bar */}
       <div className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800">
         <div className="max-w-7xl mx-auto px-6 py-3">
           <div className="flex items-center justify-between">
@@ -990,8 +919,6 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
                   <p className="text-xs text-gray-400">Dashboard • Supply Chain</p>
                 </div>
               </div>
-
-              {/* Botones de navegación */}
               <div className="flex items-center gap-2 ml-6">
                 <button
                   onClick={() => setActiveTab('dashboard')}
@@ -1014,8 +941,6 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
               </div>
             </div>
 
-
-
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -1030,12 +955,6 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
-                  <Bell className="w-5 h-5 text-gray-400" />
-                </button>
-                <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
-                  <Settings className="w-5 h-5 text-gray-400" />
-                </button>
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
                     <User className="w-4 h-4 text-blue-400" />
@@ -1043,19 +962,15 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
                   <div className="text-right">
                     <div className="text-xs text-gray-400">Almacén</div>
                     <div className="text-sm font-bold text-white">
-                      {currentUser?.email.split('@')[0].toUpperCase()}
+                      {currentUser?.email?.split('@')[0]?.toUpperCase() || 'Usuario'}
                     </div>
                   </div>
                   <button
-                    onClick={() => {
-                      signOut(auth).then(() => {
-                        onLogout?.(); // Llama al handler de logout
-                      });
-                    }}
-                    className="p-2 hover:bg-red-500/10 rounded-lg transition-colors group"
+                    onClick={onLogout}
+                    className="ml-2 p-2 hover:bg-red-500/10 rounded-lg transition-colors"
                     title="Cerrar sesión"
                   >
-                    <LogOut className="w-4 h-4 text-gray-400 group-hover:text-red-400" />
+                    <LogOut className="w-5 h-5 text-gray-400 hover:text-red-400" />
                   </button>
                 </div>
               </div>
@@ -1064,97 +979,105 @@ const SupplyChainView = ({ currentUser: userFromApp }) => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="col-span-1 md:col-span-2">
-            <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl font-bold text-white">Visión General</h2>
-                  <p className="text-sm text-gray-400">Estado actual del flujo de materiales</p>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {activeTab === 'dashboard' ? (
+          <>
+            {/* Stats Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="col-span-1 md:col-span-2">
+                <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Visión General</h2>
+                      <p className="text-sm text-gray-400">Estado actual del flujo de materiales</p>
+                    </div>
+                    <BarChart3 className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <StatCard
+                      icon={<Clock className="w-5 h-5" />}
+                      label="Pendientes"
+                      value={stats.pending}
+                      color="red"
+                      trend={stats.pending > 5 ? "+2" : null}
+                    />
+                    <StatCard
+                      icon={<Truck className="w-5 h-5" />}
+                      label="En Tránsito"
+                      value={stats.inTransit}
+                      color="yellow"
+                    />
+                    <StatCard
+                      icon={<CheckCircle className="w-5 h-5" />}
+                      label="Entregados Hoy"
+                      value={stats.delivered}
+                      color="green"
+                      trend="+12"
+                    />
+                  </div>
                 </div>
-                <BarChart3 className="w-6 h-6 text-blue-400" />
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <StatCard
-                  icon={<Clock className="w-5 h-5" />}
-                  label="Pendientes"
-                  value={stats.pending}
-                  color="red"
-                  trend={stats.pending > 5 ? "+2" : null}
-                />
-                <StatCard
-                  icon={<Truck className="w-5 h-5" />}
-                  label="En Tránsito"
-                  value={stats.inTransit}
-                  color="yellow"
-                />
-                <StatCard
-                  icon={<CheckCircle className="w-5 h-5" />}
-                  label="Entregados Hoy"
-                  value={stats.delivered}
-                  color="green"
-                  trend="+12"
-                />
+
+              <div className="col-span-1 md:col-span-2">
+                <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Rendimiento</h2>
+                      <p className="text-sm text-gray-400">Métricas de tiempo de entrega</p>
+                    </div>
+                    <Activity className="w-6 h-6 text-green-400" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-800/50 rounded-lg p-4">
+                      <div className="text-3xl font-bold text-white">15:24</div>
+                      <div className="text-sm text-gray-400">Tiempo promedio</div>
+                      <div className="text-xs text-green-400 mt-1">↓ 2.3min desde ayer</div>
+                    </div>
+                    <div className="bg-gray-800/50 rounded-lg p-4">
+                      <div className="text-3xl font-bold text-white">98.2%</div>
+                      <div className="text-sm text-gray-400">Tasa de cumplimiento</div>
+                      <div className="text-xs text-green-400 mt-1">↑ 0.8% desde ayer</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="col-span-1 md:col-span-2">
-            <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl font-bold text-white">Rendimiento</h2>
-                  <p className="text-sm text-gray-400">Métricas de tiempo de entrega</p>
-                </div>
-                <Activity className="w-6 h-6 text-green-400" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-800/50 rounded-lg p-4">
-                  <div className="text-3xl font-bold text-white">15:24</div>
-                  <div className="text-sm text-gray-400">Tiempo promedio</div>
-                  <div className="text-xs text-green-400 mt-1">↓ 2.3min desde ayer</div>
-                </div>
-                <div className="bg-gray-800/50 rounded-lg p-4">
-                  <div className="text-3xl font-bold text-white">98.2%</div>
-                  <div className="text-sm text-gray-400">Tasa de cumplimiento</div>
-                  <div className="text-xs text-green-400 mt-1">↑ 0.8% desde ayer</div>
-                </div>
-              </div>
+            {/* Plant Layout Map */}
+            <PlantMap locationStatuses={locationStatuses} orders={orders} />
+
+            {/* Orders Board */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <OrderColumn
+                title="Pedidos Pendientes"
+                status="PENDING"
+                orders={orders.filter(o => o.status === 'PENDING')}
+                onAction={(id) => handleStatusChange(id, 'IN_TRANSIT')}
+                actionLabel="Despachar"
+                actionIcon={<Truck className="w-4 h-4" />}
+                color="red"
+              />
+
+              <OrderColumn
+                title="En Tránsito"
+                status="IN_TRANSIT"
+                orders={orders.filter(o => o.status === 'IN_TRANSIT')}
+                onAction={(id) => handleStatusChange(id, 'DELIVERED')}
+                actionLabel="Marcar Entregado"
+                actionIcon={<CheckCircle className="w-4 h-4" />}
+                color="yellow"
+              />
             </div>
-          </div>
-        </div>
-
-        {/* Plant Layout Map */}
-        <PlantMap locationStatuses={locationStatuses} orders={orders} />
-
-        {/* Orders Board */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          <OrderColumn
-            title="Pedidos Pendientes"
-            status="PENDING"
-            orders={orders.filter(o => o.status === 'PENDING')}
-            onAction={(id) => handleStatusChange(id, 'IN_TRANSIT')}
-            actionLabel="Despachar"
-            actionIcon={<Truck className="w-4 h-4" />}
-            color="red"
-          />
-
-          <OrderColumn
-            title="En Tránsito"
-            status="IN_TRANSIT"
-            orders={orders.filter(o => o.status === 'IN_TRANSIT')}
-            onAction={(id) => handleStatusChange(id, 'DELIVERED')}
-            actionLabel="Marcar Entregado"
-            actionIcon={<CheckCircle className="w-4 h-4" />}
-            color="yellow"
-          />
-        </div>
+          </>
+        ) : (
+          <KPIView currentUser={currentUser} />
+        )}
       </div>
     </div>
   );
 };
+
+// ============ COMPONENTES AUXILIARES ============
 
 // Component: Plant Map
 const PlantMap = ({ locationStatuses, orders }) => {
@@ -1164,11 +1087,6 @@ const PlantMap = ({ locationStatuses, orders }) => {
     { id: 'Estantería C', x: 56.10, y: 69.22 },
     { id: 'Estantería D', x: 37.5, y: 66.88 },
   ];
-  const handleMapClick = (e) => {
-
-  };
-  // Reemplazar esta URL por tu imagen real del plano de planta
-  const plantLayoutImage = "tu-plano.png";
 
   return (
     <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-6">
@@ -1199,33 +1117,18 @@ const PlantMap = ({ locationStatuses, orders }) => {
       </div>
 
       <div className="relative rounded-xl border-2 border-gray-700 h-96 overflow-hidden">
-        <div
-          onClick={handleMapClick}
-          className="relative rounded-xl border-2 border-gray-700 h-96 overflow-hidden cursor-crosshair group"
-        >
-          {/* Imagen del plano - Centrada con márgenes negros a los lados */}
+        <div className="relative rounded-xl border-2 border-gray-700 h-96 overflow-hidden cursor-crosshair group">
           <div className="absolute inset-0 flex items-center justify-center bg-gray-950/40 pointer-events-none">
-            <img
-              src={plantLayoutImage}
-              alt="Plano de planta"
-              className="w-full h-full object-contain opacity-80"
-            />
+            <div className="w-full h-full bg-gray-800/20 flex items-center justify-center">
+              <div className="text-center">
+                <MapPin className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-500">Plano de planta</p>
+                <p className="text-gray-600 text-sm">Aquí iría la imagen del plano</p>
+              </div>
+            </div>
             <div className="absolute inset-0 bg-gradient-to-t from-gray-950/70 via-transparent to-transparent"></div>
           </div>
 
-          {/* Overlay de grid sutil */}
-          <div className="absolute inset-0 opacity-10">
-            <svg className="w-full h-full">
-              <defs>
-                <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
-                  <path d="M 80 0 L 0 0 0 80" fill="none" stroke="white" strokeWidth="1" />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
-            </svg>
-          </div>
-
-          {/* Location Points */}
           {locations.map(location => {
             const status = locationStatuses[location.id];
             let color = 'bg-gray-600';
@@ -1284,25 +1187,6 @@ const PlantMap = ({ locationStatuses, orders }) => {
               </motion.div>
             );
           })}
-
-          {/* Legend Overlay */}
-          <div className="absolute bottom-4 left-4 bg-gray-900/90 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
-            <h3 className="text-sm font-bold text-white mb-2">Leyenda de Áreas</h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span className="text-xs text-gray-300">Producción</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-xs text-gray-300">Logística</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                <span className="text-xs text-gray-300">Control</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -1391,21 +1275,7 @@ const OrderColumn = ({ title, status, orders, onAction, actionLabel, actionIcon,
           </div>
         )}
       </div>
-      {/* Help Section */}
-      <div className="mt-8 bg-gray-800/20 rounded-xl p-4 border border-gray-700/30">
-        <h3 className="text-sm font-bold text-gray-300 mb-2 flex items-center gap-2">
-          <Info className="w-4 h-4" />
-          Información útil
-        </h3>
-        <div className="text-xs text-gray-400 space-y-1">
-          <p>• Solo se permite una solicitud activa por material</p>
-          <p>• El almacén será notificado inmediatamente</p>
-          <p>• Tiempo de respuesta estimado: 15-30 min</p>
-          <p>• Para emergencias, contacte al supervisor</p>
-        </div>
-      </div>
     </div>
-
   );
 };
 
@@ -1493,38 +1363,23 @@ const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
   );
 };
 
-// Main App
-// --- ESTA DEBE SER LA ÚNICA FUNCIÓN APP AL FINAL ---
-// Reemplaza la función App actual con esta:
+// ============ MAIN APP ============
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
-    // Escucha cambios en la sesión de Firebase
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
-
-      // Si el usuario se desloguea y está en desktop, mostrar login
-      if (!user && !window.innerWidth < 768) {
-        setShowLogin(true);
-      }
     });
     return () => unsubscribe();
   }, []);
 
-  // Manejar logout
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      // Después de logout, redirigir al login
-      setCurrentUser(null);
-      setShowLogin(true);
-    } catch (error) {
-      console.error('Error al cerrar sesión:', error);
-    }
+    await signOut(auth);
+    setCurrentUser(null);
   };
 
   if (loading) {
@@ -1535,19 +1390,24 @@ export default function App() {
     );
   }
 
-  // Detectamos si es celular para la vista de operario
   const isMobile = window.innerWidth < 768;
 
-  // Vista de Login (cuando se requiere)
-  if (showLogin || (!currentUser && !isMobile)) {
+  // Si es celular: OperatorView con o sin login
+  if (isMobile) {
+    if (showLogin && !currentUser) {
+      return <LoginScreen onLoginSuccess={() => setShowLogin(false)} />;
+    }
+    return <OperatorView
+      currentUser={currentUser}
+      onLogout={handleLogout}
+      onOpenLogin={() => setShowLogin(true)}
+    />;
+  }
+
+  // Si es PC: Login obligatorio
+  if (!currentUser) {
     return <LoginScreen onLoginSuccess={() => setShowLogin(false)} />;
   }
 
-  // Vista móvil (OperatorView)
-  if (isMobile) {
-    return <OperatorView currentUser={currentUser} onLogout={handleLogout} />;
-  }
-
-  // Vista desktop (Dashboard/KPIs)
   return <SupplyChainView currentUser={currentUser} onLogout={handleLogout} />;
 }
