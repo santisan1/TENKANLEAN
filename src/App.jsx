@@ -206,7 +206,6 @@ const OperatorView = () => {
     setCardId(mockId);
     handleScan(mockId);
   };
-
   const handleScan = async (scannedId) => {
     const now = Date.now();
     if (now - lastScanTime < 5000) {
@@ -236,28 +235,34 @@ const OperatorView = () => {
       // 2. Buscar pedido existente
       const existingOrder = await checkExistingOrder(scannedId);
 
-      // ========== CASO A: USUARIO NO LOGUEADO (PRODUCCIÓN) ==========
+      // ========== CASO A: SIN LOGIN (PRODUCCIÓN) ==========
       if (!currentUser) {
+        // Si ya hay pedido activo
         if (existingOrder.exists) {
           const minutosEspera = Math.floor((Date.now() - existingOrder.timestamp.toMillis()) / 60000);
+
           setExistingOrderInfo({
             orderId: existingOrder.orderId,
             status: existingOrder.status,
             timestamp: existingOrder.timestamp,
             location: existingOrder.location,
-            partNumber: existingOrder.partNumber
+            partNumber: existingOrder.partNumber,
+            takenBy: existingOrder.takenBy || 'Sin asignar'
           });
 
-          const mensajeEstado = existingOrder.status === 'PENDING' ? 'PENDIENTE' : 'EN CAMINO';
+          const estadoTexto = existingOrder.status === 'PENDING'
+            ? `⏳ PENDIENTE de retiro`
+            : `🚚 EN CAMINO con ${existingOrder.takenBy || 'almacén'}`;
+
           setFeedback({
             type: 'info',
-            message: `Material ya solicitado y está ${mensajeEstado}.\nEsperando hace ${minutosEspera} min.`
+            message: `Material ${estadoTexto}.\nEsperando hace ${minutosEspera} min.\n\n⚠️ Evitemos duplicar pedidos.`
           });
           setScanning(false);
           return;
         }
 
-        // Crear pedido nuevo
+        // Crear nuevo pedido
         await addDoc(collection(db, 'active_orders'), {
           cardId: scannedId,
           partNumber: card.partNumber,
@@ -266,48 +271,62 @@ const OperatorView = () => {
           standardPack: card.standardPack,
           timestamp: serverTimestamp(),
           status: 'PENDING',
-          operatorId: 'Produccion',
+          requestedBy: 'Produccion',
           createdAt: serverTimestamp()
         });
 
         setFeedback({
           type: 'success',
-          message: `✓ Pedido confirmado para ${card.location}\n${card.partNumber} solicitado.`
+          message: `✓ Pedido creado para ${card.location}\n📦 ${card.partNumber}\n\n⏱️ El almacén será notificado.`
         });
       }
 
-      // ========== CASO B: USUARIO LOGUEADO (ALMACÉN) ==========
+      // ========== CASO B: CON LOGIN (ALMACÉN) ==========
       else {
+        const userName = currentUser.email.split('@')[0];
+
+        // Si hay pedido EN TRÁNSITO → ENTREGA DIRECTA
         if (existingOrder.exists && existingOrder.status === 'IN_TRANSIT') {
-          // Mostrar botón de confirmación de entrega
-          setExistingOrderInfo({
-            ...existingOrder,
-            showDeliveryButton: true
+          await updateDoc(doc(db, 'active_orders', existingOrder.orderId), {
+            status: 'DELIVERED',
+            deliveredAt: serverTimestamp(),
+            deliveredBy: userName
           });
+
           setFeedback({
-            type: 'info',
-            message: 'Material en tránsito detectado.\nConfirme la entrega.'
+            type: 'success',
+            message: `✅ ENTREGA CONFIRMADA\n📍 ${card.location}\n👤 Por: ${userName}\n⏱️ ${new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
           });
-        } else if (existingOrder.exists && existingOrder.status === 'PENDING') {
-          setFeedback({
-            type: 'info',
-            message: 'Pedido pendiente. Marque como "En Tránsito" desde el Dashboard.'
-          });
-        } else {
-          setFeedback({
-            type: 'error',
-            message: 'No hay pedido activo para este material.'
-          });
+
+          setScanning(false);
+          return;
         }
+
+        // Si hay pedido PENDIENTE → Aviso para ir al Dashboard
+        if (existingOrder.exists && existingOrder.status === 'PENDING') {
+          setFeedback({
+            type: 'info',
+            message: `ℹ️ Pedido pendiente detectado.\n\n👉 Vaya al Dashboard para marcarlo "En Tránsito" antes de salir.`
+          });
+          setScanning(false);
+          return;
+        }
+
+        // No hay pedido activo
+        setFeedback({
+          type: 'error',
+          message: `⚠️ No hay pedido activo para este material.\n\nSolo producción puede crear pedidos.`
+        });
       }
 
     } catch (error) {
       console.error('Error:', error);
-      setFeedback({ type: 'error', message: 'Error de conexión' });
+      setFeedback({ type: 'error', message: 'Error de conexión. Reintente.' });
     }
 
     setScanning(false);
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-950">
       {/* Industrial Header */}
@@ -587,10 +606,32 @@ const OperatorView = () => {
 
 // Component: Supply Chain Dashboard
 const SupplyChainView = () => {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [orders, setOrders] = useState([]);
   const [stats, setStats] = useState({ pending: 0, inTransit: 0, delivered: 0 });
   const [isConnected, setIsConnected] = useState(false);
   const [time, setTime] = useState(new Date());
+
+  // ========== DETECTAR USUARIO LOGUEADO ==========
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthChecked(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // ========== SI NO HAY USUARIO, MOSTRAR LOGIN ==========
+  if (!authChecked) {
+    return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="text-white">Verificando acceso...</div>
+    </div>;
+  }
+
+  if (!currentUser) {
+    return <LoginScreen onLoginSuccess={() => { }} />;
+  }
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -648,8 +689,10 @@ const SupplyChainView = () => {
 
       if (newStatus === 'DELIVERED') {
         updateData.deliveredAt = serverTimestamp();
+        updateData.deliveredBy = currentUser.email.split('@')[0]; // Guarda quien entregó
       } else if (newStatus === 'IN_TRANSIT') {
         updateData.dispatchedAt = serverTimestamp();
+        updateData.takenBy = currentUser.email.split('@')[0]; // ✅ NUEVO: Guarda quien tomó el pedido
       }
 
       await updateDoc(orderRef, updateData);
@@ -1117,6 +1160,15 @@ const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
             <span className="font-medium text-white">{order.location}</span>
           </div>
         </div>
+        {order.takenBy && (
+          <div className="bg-gray-900/50 rounded-lg p-3">
+            <div className="text-xs text-gray-400 mb-1">Tomado por</div>
+            <div className="flex items-center gap-2">
+              <User className="w-3 h-3 text-blue-400" />
+              <span className="font-medium text-blue-300">{order.takenBy}</span>
+            </div>
+          </div>
+        )}
         <div className="bg-gray-900/50 rounded-lg p-3">
           <div className="text-xs text-gray-400 mb-1">Pack Estándar</div>
           <div className="font-medium text-white">{order.standardPack} unidades</div>
@@ -1138,43 +1190,8 @@ const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
 // Main App
 export default function App() {
   const [isMobile] = useState(window.innerWidth < 768);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setAuthChecked(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  if (!authChecked && isMobile) {
-    return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-white">Cargando...</div>
-    </div>;
-  }
-
-  // Mostrar login solo si presionan "Modo Almacén"
-  if (showLogin && !currentUser && isMobile) {
-    return <LoginScreen onLoginSuccess={() => setShowLogin(false)} />;
-  }
-
-  // Botón para acceder a login (producción)
-  if (isMobile && !currentUser) {
-    return (
-      <div className="relative">
-        <OperatorView />
-        <button
-          onClick={() => setShowLogin(true)}
-          className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm"
-        >
-          Modo Almacén
-        </button>
-      </div>
-    );
-  }
-
+  // Desktop = SupplyChainView (con login obligatorio)
+  // Mobile = OperatorView (sin login, acceso libre)
   return isMobile ? <OperatorView /> : <SupplyChainView />;
 }
