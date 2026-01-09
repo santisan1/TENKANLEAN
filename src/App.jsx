@@ -360,19 +360,14 @@ const KPIView = ({ currentUser }) => {
 };
 
 // ============ OPERATOR VIEW (MOBILE) ============
+// Component: Operator View (Mobile)
 const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
-  const [cardId, setCardId] = useState('');
   const [scanning, setScanning] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [autoSubmitted, setAutoSubmitted] = useState(false);
   const [existingOrderInfo, setExistingOrderInfo] = useState(null);
-  const [lastScanTime, setLastScanTime] = useState(0);
 
-  const clearFeedback = () => {
-    setFeedback(null);
-  };
-
-  // AUTO-SUBMIT FROM URL PARAMETER
+  // AUTO-SUBMIT FROM URL PARAMETER - ESCANEO AUTOMÁTICO
   useEffect(() => {
     if (autoSubmitted) return;
 
@@ -380,27 +375,22 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
     const idFromUrl = params.get('id');
 
     if (idFromUrl) {
-      setCardId(idFromUrl.toUpperCase());
+      const scannedId = idFromUrl.toUpperCase();
       setAutoSubmitted(true);
+
+      // Procesar el escaneo inmediatamente
       setTimeout(() => {
-        handleScan(idFromUrl.toUpperCase());
-      }, 500);
+        handleScan(scannedId);
+      }, 300); // Pequeño delay para mejor UX
     }
   }, [autoSubmitted]);
 
-  const simulateScan = () => {
-    const mockId = `MAT-${Math.floor(Math.random() * 100).toString().padStart(3, '0')}`;
-    setCardId(mockId);
-    handleScan(mockId);
+  const clearFeedback = () => {
+    setFeedback(null);
+    setExistingOrderInfo(null);
   };
 
   const handleScan = async (scannedId) => {
-    const now = Date.now();
-    if (now - lastScanTime < 5000) {
-      setFeedback({ type: 'error', message: 'Aguarde un momento entre escaneos' });
-      return;
-    }
-    setLastScanTime(now);
     if (!scannedId) return;
 
     setScanning(true);
@@ -413,7 +403,10 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
       const cardSnap = await getDoc(cardRef);
 
       if (!cardSnap.exists()) {
-        setFeedback({ type: 'error', message: 'Tarjeta NO REGISTRADA' });
+        setFeedback({
+          type: 'error',
+          message: '✗ ERROR\nTarjeta NO REGISTRADA'
+        });
         setScanning(false);
         return;
       }
@@ -444,7 +437,7 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
 
           setFeedback({
             type: 'info',
-            message: `Material ${estadoTexto}.\nEsperando hace ${minutosEspera} min.\n\n⚠️ Evitemos duplicar pedidos.`
+            message: `ℹ️ MATERIAL EN PROCESO\n${estadoTexto}\n⏱️ Esperando hace ${minutosEspera} min.\n📍 ${card.location}`
           });
           setScanning(false);
           return;
@@ -465,7 +458,7 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
 
         setFeedback({
           type: 'success',
-          message: `✓ Pedido creado para ${card.location}\n📦 ${card.partNumber}\n\n⏱️ El almacén será notificado.`
+          message: `✓ PEDIDO CREADO\n📍 ${card.location}\n📦 ${card.partNumber}\n⏱️ El almacén será notificado`
         });
       }
 
@@ -490,11 +483,11 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
           return;
         }
 
-        // Si hay pedido PENDIENTE → Aviso para ir al Dashboard
+        // Si hay pedido PENDIENTE → Aviso
         if (existingOrder.exists && existingOrder.status === 'PENDING') {
           setFeedback({
             type: 'info',
-            message: `ℹ️ Pedido pendiente detectado.\n\n👉 Vaya al Dashboard para marcarlo "En Tránsito" antes de salir.`
+            message: `ℹ️ PEDIDO PENDIENTE\n👉 Marca como "En Tránsito" en el Dashboard antes de salir`
           });
           setScanning(false);
           return;
@@ -503,13 +496,13 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
         // No hay pedido activo
         setFeedback({
           type: 'error',
-          message: `⚠️ No hay pedido activo para este material.\n\nSolo producción puede crear pedidos.`
+          message: `⚠️ NO HAY PEDIDO ACTIVO\nSolo producción puede crear pedidos`
         });
       }
 
     } catch (error) {
       console.error('Error:', error);
-      setFeedback({ type: 'error', message: 'Error de conexión. Reintente.' });
+      setFeedback({ type: 'error', message: '✗ ERROR DE CONEXIÓN\nReintente.' });
     }
 
     setScanning(false);
@@ -551,7 +544,6 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
                 <>
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   <span className="text-xs text-green-400 font-medium">PRODUCCIÓN</span>
-                  {/* Botón discreto para login del almacén */}
                   <button
                     onClick={onOpenLogin}
                     className="ml-2 p-2 bg-gray-800/50 hover:bg-gray-700 rounded-lg transition-colors"
@@ -568,256 +560,98 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
 
       {/* Main Content */}
       <div className="max-w-md mx-auto px-6 py-8">
+        {/* Icono de QR centrado */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="text-center mb-10"
+          className="text-center mb-8"
         >
-          <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-2xl mb-6 border border-blue-500/20">
-            <Package className="w-12 h-12 text-blue-400" />
+          <div className="inline-flex items-center justify-center w-32 h-32 bg-gradient-to-br from-blue-500/10 to-blue-600/10 rounded-3xl mb-6 border-2 border-blue-500/20">
+            {scanning ? (
+              <div className="w-20 h-20 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+            ) : (
+              <Camera className="w-20 h-20 text-blue-400" />
+            )}
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Escaneo de Material</h2>
-          <p className="text-gray-400 text-sm">Escanee el código QR de la tarjeta Kanban para solicitar material</p>
+          <h2 className="text-3xl font-bold text-white mb-2">Escaneo Automático</h2>
+          <p className="text-gray-400 text-sm">El QR se procesa automáticamente</p>
         </motion.div>
 
-        {/* Existing Order Info */}
+        {/* Feedback Principal (ocupa toda la pantalla) */}
         <AnimatePresence>
-          {existingOrderInfo && (
+          {feedback && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="mt-4"
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="mt-8"
             >
-              <div className="bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-2 border-yellow-500/50 rounded-2xl p-6 shadow-2xl">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-14 h-14 bg-yellow-500/30 rounded-full flex items-center justify-center animate-pulse">
-                    <Info className="w-8 h-8 text-yellow-300" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-yellow-200 text-xl">Pedido ya en proceso</p>
-                    <p className="text-yellow-300/80 text-sm">No es necesario volver a escanear</p>
-                  </div>
+              <div className={`rounded-2xl border-2 p-8 text-center ${feedback.type === 'success'
+                ? 'bg-green-500/10 border-green-500/30'
+                : feedback.type === 'error'
+                  ? 'bg-red-500/10 border-red-500/30'
+                  : 'bg-blue-500/10 border-blue-500/30'
+                }`}>
+
+                <div className="mb-6">
+                  {feedback.type === 'success' && (
+                    <div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <CheckCircle className="w-16 h-16 text-green-400" />
+                    </div>
+                  )}
+                  {feedback.type === 'error' && (
+                    <div className="w-24 h-24 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <AlertTriangle className="w-16 h-16 text-red-400" />
+                    </div>
+                  )}
+                  {feedback.type === 'info' && (
+                    <div className="w-24 h-24 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <Info className="w-16 h-16 text-blue-400" />
+                    </div>
+                  )}
                 </div>
 
-                <div className="bg-gray-900/50 rounded-xl p-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-300">Estado:</span>
-                    <span className={`px-3 py-1 rounded-full font-bold ${existingOrderInfo.status === 'PENDING'
-                      ? 'bg-yellow-500/20 text-yellow-300'
-                      : 'bg-orange-500/20 text-orange-300'
-                      }`}>
-                      {existingOrderInfo.status === 'PENDING' ? '⏳ Pendiente' : '🚚 En camino'}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">Solicitado:</span>
-                    <span className="font-mono font-bold text-white">
-                      {formatTime(existingOrderInfo.timestamp)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-gray-300">Material:</span>
-                    <span className="font-medium text-white">{existingOrderInfo.partNumber}</span>
-                  </div>
+                <div className="space-y-4">
+                  <p className="text-2xl font-bold text-white">
+                    {feedback.type === 'success' ? '✓ LISTO' :
+                      feedback.type === 'error' ? '✗ ERROR' :
+                        'ℹ️ INFORMACIÓN'}
+                  </p>
+                  <p className="text-lg text-gray-300 whitespace-pre-line leading-relaxed">
+                    {feedback.message}
+                  </p>
                 </div>
 
-                <div className="mt-4 flex items-center justify-center gap-2 text-sm text-yellow-300/80">
-                  <Clock className="w-4 h-4" />
-                  <span>El almacén está procesando tu solicitud</span>
-                </div>
-
-                {currentUser && existingOrderInfo.status === 'IN_TRANSIT' && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const userName = currentUser.email.split('@')[0];
-                        await updateDoc(doc(db, 'active_orders', existingOrderInfo.orderId), {
-                          status: 'DELIVERED',
-                          deliveredAt: serverTimestamp(),
-                          deliveredBy: userName
-                        });
-
-                        setFeedback({
-                          type: 'success',
-                          message: `✓ Entrega confirmada por ${userName}`
-                        });
-                        setExistingOrderInfo(null);
-                      } catch (error) {
-                        setFeedback({ type: 'error', message: 'Error al confirmar entrega' });
-                      }
-                    }}
-                    className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="w-5 h-5" />
-                    <span>CONFIRMAR ENTREGA EN PUESTO</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={async () => {
-                    try {
-                      await updateDoc(doc(db, 'active_orders', existingOrderInfo.orderId), {
-                        status: 'CANCELLED',
-                        cancelledAt: serverTimestamp()
-                      });
-
-                      setFeedback({
-                        type: 'success',
-                        message: 'Pedido cancelado correctamente'
-                      });
-
-                      setExistingOrderInfo(null);
-                      setCardId('');
-                    } catch (error) {
-                      console.error('Error cancelling order:', error);
-                      setFeedback({
-                        type: 'error',
-                        message: 'No se pudo cancelar el pedido'
-                      });
-                    }
-                  }}
-                  className="w-full mt-4 bg-red-500/20 hover:bg-red-500/30 text-red-300 py-3 rounded-lg font-medium transition-colors border border-red-500/30 flex items-center justify-center gap-2"
+                {/* Botón para limpiar (solo visible después de 3 segundos) */}
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 2 }}
+                  onClick={clearFeedback}
+                  className="mt-8 px-6 py-3 bg-gray-800/50 hover:bg-gray-700 text-gray-300 rounded-lg font-medium transition-colors border border-gray-700 flex items-center justify-center gap-2 mx-auto"
                 >
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>Cancelar este pedido</span>
-                </button>
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Listo para nuevo escaneo</span>
+                </motion.button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="bg-gray-800/30 backdrop-blur-sm rounded-2xl border border-gray-700/50 p-6 shadow-2xl"
-        >
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-medium text-gray-300">ID de Tarjeta</label>
-              <span className="text-xs text-gray-500 font-mono">MAT-XXX</span>
+        {/* Estado cuando no hay feedback */}
+        {!feedback && !scanning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-12"
+          >
+            <div className="w-20 h-20 bg-gray-800/50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <Package className="w-10 h-10 text-gray-500" />
             </div>
-            <div className="relative">
-              <input
-                type="text"
-                value={cardId}
-                onChange={(e) => setCardId(e.target.value.toUpperCase())}
-                placeholder="Ingrese o escanee código"
-                className="w-full bg-gray-900/50 border-2 border-gray-700 rounded-xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all duration-300 font-mono text-lg tracking-wider"
-                disabled={scanning}
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <div className="w-6 h-6 border-2 border-gray-600 rounded"></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleScan(cardId)}
-              disabled={!cardId || scanning}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 disabled:from-gray-700 disabled:to-gray-800 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 flex items-center justify-center gap-3"
-            >
-              {scanning ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Procesando Escaneo...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-5 h-5" />
-                  <span>CONFIRMAR PEDIDO</span>
-                </>
-              )}
-            </motion.button>
-
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={simulateScan}
-              disabled={scanning}
-              className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 px-6 rounded-xl transition-colors border border-gray-700 flex items-center justify-center gap-3"
-            >
-              <Camera className="w-5 h-5" />
-              <span>Simular Escaneo QR</span>
-            </motion.button>
-          </div>
-
-          <AnimatePresence>
-            {feedback && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 overflow-hidden"
-              >
-                <div className={`p-4 rounded-xl border ${feedback.type === 'success'
-                  ? 'bg-green-500/10 border-green-500/30'
-                  : feedback.type === 'error'
-                    ? 'bg-red-500/10 border-red-500/30'
-                    : 'bg-blue-500/10 border-blue-500/30'
-                  }`}>
-                  <div className="flex items-start gap-3">
-                    {feedback.type === 'success' && (
-                      <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <CheckCircle className="w-6 h-6 text-green-400" />
-                      </div>
-                    )}
-                    {feedback.type === 'error' && (
-                      <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <AlertTriangle className="w-6 h-6 text-red-400" />
-                      </div>
-                    )}
-                    {feedback.type === 'info' && (
-                      <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Info className="w-6 h-6 text-blue-400" />
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <p className={`font-bold ${feedback.type === 'success'
-                        ? 'text-green-300'
-                        : feedback.type === 'error'
-                          ? 'text-red-300'
-                          : 'text-blue-300'
-                        }`}>
-                        {feedback.type === 'success'
-                          ? '✓ Solicitud Confirmada'
-                          : feedback.type === 'error'
-                            ? '✗ Error'
-                            : 'ℹ️ Información'}
-                      </p>
-                      <p className="text-sm text-gray-300 mt-1 whitespace-pre-line">{feedback.message}</p>
-
-                      {feedback.type === 'success' && (
-                        <div className="mt-3 flex items-center gap-2 text-xs text-green-400">
-                          <Clock className="w-3 h-3" />
-                          <span>Tiempo estimado de entrega: 15-30 minutos</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={clearFeedback}
-                      className="p-1 hover:bg-white/10 rounded-lg transition-colors"
-                    >
-                      <RotateCcw className="w-4 h-4 text-gray-400" />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-
-        {/* Footer Info */}
-        <div className="mt-8 text-center">
-          <div className="inline-flex items-center gap-2 text-gray-500 text-sm">
-            <Clock className="w-4 h-4" />
-            <span>Actualizado en tiempo real</span>
-          </div>
-        </div>
+            <p className="text-gray-400 text-xl font-medium">Esperando escaneo...</p>
+            <p className="text-gray-500 text-sm mt-2">Apunte el código QR a la cámara</p>
+          </motion.div>
+        )}
       </div>
     </div>
   );
@@ -879,13 +713,12 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
       const orderRef = doc(db, 'active_orders', orderId);
       const updateData = { status: newStatus };
 
-      if (newStatus === 'DELIVERED') {
-        updateData.deliveredAt = serverTimestamp();
-        updateData.deliveredBy = currentUser.email.split('@')[0];
-      } else if (newStatus === 'IN_TRANSIT') {
+      // SOLO permitir cambiar a IN_TRANSIT (despachar)
+      if (newStatus === 'IN_TRANSIT') {
         updateData.dispatchedAt = serverTimestamp();
-        updateData.takenBy = currentUser.email.split('@')[0];
+        updateData.takenBy = currentUser.email.split('@')[0]; // Guarda quien tomó el pedido
       }
+      // NO permitir cambiar a DELIVERED desde aquí
 
       await updateDoc(orderRef, updateData);
     } catch (error) {
@@ -1047,25 +880,31 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
             <PlantMap locationStatuses={locationStatuses} orders={orders} />
 
             {/* Orders Board */}
+            {/* Orders Board - MODIFICADO */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              {/* Columna PENDIENTES - Con botón */}
               <OrderColumn
                 title="Pedidos Pendientes"
                 status="PENDING"
                 orders={orders.filter(o => o.status === 'PENDING')}
                 onAction={(id) => handleStatusChange(id, 'IN_TRANSIT')}
-                actionLabel="Despachar"
+                actionLabel="DESPACHAR"
                 actionIcon={<Truck className="w-4 h-4" />}
                 color="red"
+                showAction={true}
               />
 
+              {/* Columna EN TRÁNSITO - Sin botón */}
               <OrderColumn
                 title="En Tránsito"
                 status="IN_TRANSIT"
                 orders={orders.filter(o => o.status === 'IN_TRANSIT')}
-                onAction={(id) => handleStatusChange(id, 'DELIVERED')}
-                actionLabel="Marcar Entregado"
-                actionIcon={<CheckCircle className="w-4 h-4" />}
+                // SIN onAction - La entrega solo por QR
+                actionLabel="" // Vacío
+                actionIcon={null}
                 color="yellow"
+                showAction={false}
+                infoText="Entrega solo por escaneo QR"
               />
             </div>
           </>
@@ -1232,7 +1071,7 @@ const StatCard = ({ icon, label, value, color, trend }) => {
 };
 
 // Component: Order Column
-const OrderColumn = ({ title, status, orders, onAction, actionLabel, actionIcon, color }) => {
+const OrderColumn = ({ title, status, orders, onAction, actionLabel, actionIcon, color, showAction = true, infoText }) => {
   const colorClasses = {
     red: 'border-red-500/20',
     yellow: 'border-yellow-500/20',
@@ -1261,6 +1100,7 @@ const OrderColumn = ({ title, status, orders, onAction, actionLabel, actionIcon,
               actionLabel={actionLabel}
               actionIcon={actionIcon}
               color={color}
+              showAction={showAction}
             />
           ))}
         </AnimatePresence>
@@ -1275,12 +1115,24 @@ const OrderColumn = ({ title, status, orders, onAction, actionLabel, actionIcon,
           </div>
         )}
       </div>
+
+      {/* Información adicional para columna sin botón */}
+      {!showAction && infoText && (
+        <div className="mt-6 bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
+          <div className="flex items-center gap-2 text-blue-400 text-sm">
+            <Info className="w-4 h-4" />
+            <span>{infoText}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
+
 };
 
 // Component: Order Card
-const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
+// Component: Order Card
+const OrderCard = ({ order, onAction, actionLabel, actionIcon, color, showAction = true }) => {
   const urgent = isUrgent(order.timestamp, order.status);
 
   const colorClasses = {
@@ -1351,14 +1203,17 @@ const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
         </div>
       </div>
 
-      <motion.button
-        whileTap={{ scale: 0.98 }}
-        onClick={() => onAction(order.id)}
-        className={`w-full ${buttonClasses[color]} text-white font-bold py-3 px-4 rounded-lg transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3`}
-      >
-        {actionIcon}
-        {actionLabel}
-      </motion.button>
+      {/* SOLO mostrar botón si showAction es true */}
+      {showAction && onAction && (
+        <motion.button
+          whileTap={{ scale: 0.98 }}
+          onClick={() => onAction(order.id)}
+          className={`w-full ${buttonClasses[color]} text-white font-bold py-3 px-4 rounded-lg transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3`}
+        >
+          {actionIcon}
+          {actionLabel}
+        </motion.button>
+      )}
     </motion.div>
   );
 };
