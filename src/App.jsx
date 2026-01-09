@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDoc, getDocs, addDoc, onSnapshot, updateDoc, doc, query, where, serverTimestamp, getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from 'firebase/firestore';
-import { Package, AlertTriangle, CheckCircle, Truck, Info, RotateCcw, Camera, Clock, MapPin, Activity, Wifi, Factory, Warehouse, Settings, Bell, User, BarChart3 } from 'lucide-react';
+import {
+  getFirestore, collection, getDoc, getDocs, addDoc,
+  onSnapshot, updateDoc, doc, query, where, serverTimestamp
+} from 'firebase/firestore';
+
+// 2. Esto es SOLO para el Login (Auth) - ACÁ ESTABA EL ERROR
+import {
+  getAuth, signInWithEmailAndPassword, signOut,
+  onAuthStateChanged, setPersistence, browserLocalPersistence
+} from 'firebase/auth'; import { Package, AlertTriangle, CheckCircle, Truck, Info, RotateCcw, Camera, Clock, MapPin, Activity, Wifi, Factory, Warehouse, Settings, Bell, User, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Firebase Configuration
