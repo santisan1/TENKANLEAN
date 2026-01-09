@@ -575,29 +575,64 @@ const KPIView = ({ currentUser }) => {
               <span className="text-sm text-gray-400">Top {kpiData.operatorPerformance.length}</span>
             </div>
 
+            {/* REEMPLAZA TODA LA LISTA DE OPERARIOS CON ESTO */}
             <div className="space-y-4">
               {kpiData.operatorPerformance.map((op, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${idx === 0 ? 'bg-yellow-500/20' :
-                      idx === 1 ? 'bg-gray-500/20' :
-                        idx === 2 ? 'bg-orange-500/20' : 'bg-gray-800/50'
-                      }`}>
-                      <span className={`font-bold ${idx === 0 ? 'text-yellow-400' :
-                        idx === 1 ? 'text-gray-400' :
-                          idx === 2 ? 'text-orange-400' : 'text-gray-500'
-                        }`}>
-                        #{idx + 1}
-                      </span>
+                <div key={idx} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-500 font-bold">#{idx + 1}</span>
+                      <div>
+                        <p className="font-bold text-white capitalize text-lg">{op.name}</p>
+                        <p className="text-[10px] text-gray-500 uppercase">{op.deliveries} entregas realizadas</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-white capitalize">{op.name}</p>
-                      <p className="text-xs text-gray-400">{op.deliveries} entregas • {op.avgLeadTime} min promedio</p>
+                    <div className="text-right">
+                      {/* CARGA ACUMULADA: Puntos por sacar materiales Nivel 4 o 5 */}
+                      <p className="text-orange-400 font-black text-xl">{op.totalPoints || 0} PTS</p>
+                      <p className="text-[10px] text-gray-500 uppercase">Carga Logística</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-green-400">{op.deliveries}</div>
-                    <div className="text-xs text-gray-400">entregas</div>
+
+                  <div className="space-y-4">
+                    {/* BARRA DE EFICIENCIA OPERATIVA (Velocidad vs Estándar) */}
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-blue-400 font-bold">Eficiencia de Tarea</span>
+                        <span className="text-white">{op.avgEfficiency}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-gray-900 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(op.avgEfficiency, 100)}%` }}
+                          className={`h-full ${op.avgEfficiency >= 100 ? 'bg-blue-500' : 'bg-blue-600/40'}`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* BARRA DE REACCIÓN (Detectar si prepara antes de aceptar) */}
+                    <div>
+                      <div className="flex justify-between text-[10px] mb-1">
+                        <span className="text-gray-400 uppercase">Tiempo de Reacción</span>
+                        <span className={op.reactionRank > 10 ? 'text-red-400' : 'text-green-400'}>
+                          Promedio: {op.reactionRank} min
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-gray-900 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${op.reactionRank > 10 ? 'bg-red-500' : 'bg-green-500'}`}
+                          style={{ width: `${Math.min(op.reactionRank * 5, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* SCORE DE INTEGRIDAD (Apego al proceso) */}
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-700/50">
+                      <span className="text-[10px] text-gray-400 uppercase">Integridad de Proceso (Anti-Trampa)</span>
+                      <span className={`text-xs font-bold ${op.integrityScore < 90 ? 'text-yellow-500' : 'text-green-500'}`}>
+                        {op.integrityScore}%
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -705,10 +740,7 @@ const KPIView = ({ currentUser }) => {
           </div>
           {/* Ejemplo de cómo mostrar los dos indicadores en tu tabla */}
           <div className="flex flex-col gap-2 w-full">
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-blue-400">Eficiencia (Velocidad): {op.avgEfficiency}%</span>
-              <span className="text-orange-400">Carga Acumulada: {op.totalPoints} pts</span>
-            </div>
+
 
             {/* Barra de Reacción (para ver si prepara antes de aceptar) */}
             <div className="flex items-center gap-2">
