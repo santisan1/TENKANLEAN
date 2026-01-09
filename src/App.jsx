@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
   getFirestore, collection, getDoc, getDocs, addDoc,
-  onSnapshot, updateDoc, doc, query, where, serverTimestamp
+  onSnapshot, updateDoc, doc, query, where, serverTimestamp, deleteDoc
 } from 'firebase/firestore';
 import {
   getAuth, signInWithEmailAndPassword, signOut,
@@ -277,7 +277,40 @@ const KPIView = ({ currentUser }) => {
         const avgDispatchToDelivery = leadTimes.length > 0
           ? Math.round(leadTimes.reduce((sum, lt) => sum + lt.dispatchToDelivery, 0) / leadTimes.length)
           : 0;
+        // Dentro de tu fetchKPIs, después de obtener los pedidos:
 
+        const processedStats = deliveredOrders.map(order => {
+          const duration = (order.deliveredAt.toMillis() - order.timestamp.toMillis()) / 60000;
+
+          // 1. Buscamos los datos maestros del material (complexity y target)
+          // Nota: Deberías traer los materiales de kanban_cards previamente
+          const materialMaster = materials.find(m => m.partNumber === order.partNumber) || {};
+
+          const complexity = materialMaster.complexityWeight || 1;
+          const target = materialMaster.targetLeadTime || 30; // 30 min por defecto
+
+          return {
+            ...order,
+            duration,
+            complexity,
+            // Un pedido es exitoso si se entregó antes del target
+            isSuccess: duration <= target,
+            // Puntos de esfuerzo: Dificultad x Entrega exitosa
+            effortPoints: complexity * (duration <= target ? 1.5 : 1)
+          };
+        });
+
+        // 2. Calculamos el % de Éxito General (SLA)
+        const totalSuccess = processedStats.filter(s => s.isSuccess).length;
+        const successRate = Math.round((totalSuccess / processedStats.length) * 100);
+
+        // 3. Ranking de Operarios por "Puntos de Esfuerzo" (Justicia Operativa)
+        const operatorEffort = {};
+        processedStats.forEach(s => {
+          const op = s.deliveredBy;
+          if (!operatorEffort[op]) operatorEffort[op] = 0;
+          operatorEffort[op] += s.effortPoints;
+        });
         // 3. Rendimiento por Operario
         const operatorStats = {};
         deliveredOrders.forEach(order => {
@@ -758,16 +791,14 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
         }
 
         // Crear nuevo pedido
+        // En handleScan -> Caso A (Producción)
         await addDoc(collection(db, 'active_orders'), {
           cardId: scannedId,
-          partNumber: card.partNumber,
-          description: card.description,
-          location: card.location,
-          standardPack: card.standardPack,
-          timestamp: serverTimestamp(),
+          ...card, // 🔥 Esto copia complejidad, bins, targetLeadTime, etc.
           status: 'PENDING',
           requestedBy: 'Produccion',
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          timestamp: serverTimestamp()
         });
 
         setFeedback({
@@ -1072,19 +1103,35 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       const orderRef = doc(db, 'active_orders', orderId);
-      const updateData = { status: newStatus };
 
-      // SOLO permitir cambiar a IN_TRANSIT (despachar)
       if (newStatus === 'IN_TRANSIT') {
-        updateData.dispatchedAt = serverTimestamp();
-        updateData.takenBy = currentUser.email.split('@')[0]; // Guarda quien tomó el pedido
-      }
-      // NO permitir cambiar a DELIVERED desde aquí
+        await updateDoc(orderRef, {
+          status: 'IN_TRANSIT',
+          dispatchedAt: serverTimestamp(),
+          takenBy: currentUser.email.split('@')[0]
+        });
+      } else if (newStatus === 'DELIVERED') {
+        const orderSnap = await getDoc(orderRef);
+        const data = orderSnap.data();
 
-      await updateDoc(orderRef, updateData);
-    } catch (error) {
-      console.error('Error updating status:', error);
-    }
+        // Calculamos éxito antes de moverlo
+        const leadTimeTotal = (Date.now() - data.timestamp.toMillis()) / 60000;
+        const isSuccess = leadTimeTotal <= (data.targetLeadTime || 30);
+
+        // 1. Lo mandamos a la colección de completados
+        await addDoc(collection(db, 'completed_orders'), {
+          ...data,
+          status: 'DELIVERED',
+          deliveredAt: serverTimestamp(),
+          deliveredBy: currentUser.email.split('@')[0],
+          finalLeadTime: leadTimeTotal,
+          isSuccess: isSuccess
+        });
+
+        // 2. Lo borramos de activos (Asegurate de importar deleteDoc arriba)
+        await deleteDoc(orderRef);
+      }
+    } catch (error) { console.error('Error:', error); }
   };
 
   const locationStatuses = orders.reduce((acc, order) => {
@@ -1174,7 +1221,9 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {activeTab === 'dashboard' ? (
+        {activeTab === 'kpis' ? (
+          <KPIView currentUser={currentUser} />
+        ) : (
           <>
             {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -1269,8 +1318,7 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
               />
             </div>
           </>
-        ) : (
-          <KPIView currentUser={currentUser} />
+
         )}
       </div>
     </div>
