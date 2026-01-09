@@ -1197,10 +1197,58 @@ const OrderCard = ({ order, onAction, actionLabel, actionIcon, color }) => {
 };
 
 // Main App
+// --- ESTA DEBE SER LA ÚNICA FUNCIÓN APP AL FINAL ---
 export default function App() {
-  const [isMobile] = useState(window.innerWidth < 768);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showLogin, setShowLogin] = useState(false);
 
-  // Desktop = SupplyChainView (con login obligatorio)
-  // Mobile = OperatorView (sin login, acceso libre)
-  return isMobile ? <OperatorView /> : <SupplyChainView />;
+  useEffect(() => {
+    // Escucha cambios en la sesión de Firebase
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Detectamos si es celular para la vista de operario
+  const isMobile = window.innerWidth < 768;
+
+  if (isMobile) {
+    // Si el repartidor tocó "Acceso Almacén" y no está logueado, mostramos el login
+    if (showLogin && !currentUser) {
+      return <LoginScreen onLoginSuccess={() => setShowLogin(false)} />;
+    }
+
+    return (
+      <div className="relative">
+        {/* IMPORTANTE: Pasamos currentUser como prop aquí */}
+        <OperatorView currentUser={currentUser} />
+
+        {/* BOTÓN DISCRETO: Solo aparece si no hay nadie logueado */}
+        {!currentUser && (
+          <div className="fixed bottom-4 right-4 opacity-50 hover:opacity-100 transition-opacity">
+            <button
+              onClick={() => setShowLogin(true)}
+              className="p-2 bg-gray-800 text-gray-400 rounded-full text-[10px] flex items-center gap-1 border border-gray-700"
+            >
+              <Settings className="w-3 h-3" /> Acceso Staff
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Si es PC, va directo al Dashboard (SupplyChainView)
+  return <SupplyChainView currentUser={currentUser} />;
 }
