@@ -41,6 +41,64 @@ const formatTime = (timestamp) => {
   return timestamp.toDate().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 };
 
+// ============ UTILIDAD PARA CALCULAR MÉTRICAS DE PEDIDO ============
+const calculateOrderMetrics = (orderData, deliveredAt = new Date()) => {
+  // Asegurarnos de que tenemos los timestamps esenciales
+  if (!orderData.timestamp || !orderData.dispatchedAt) {
+    console.error('❌ No hay timestamps suficientes para calcular métricas', orderData);
+    // Retornar valores por defecto para evitar que falle el proceso
+    return {
+      reactionTime: 1,
+      executionTime: 1,
+      totalLeadTime: 1,
+      taskEfficiency: 100,
+      loadPoints: 1,
+      effortPoints: 1,
+      isSuspicious: false,
+      onTime: false,
+      complexityWeight: 1,
+      stdOpTime: 10,
+      targetLeadTime: 30
+    };
+  }
+
+  // Convertir todos los timestamps a milisegundos
+  const creationTime = orderData.timestamp.toMillis();
+  const dispatchTime = orderData.dispatchedAt.toMillis();
+  const deliveryTime = deliveredAt.getTime ? deliveredAt.getTime() : new Date(deliveredAt).getTime();
+
+  // Calcular tiempos en minutos (asegurar mínimo 1 minuto)
+  const reactionTime = Math.max(1, Math.floor((dispatchTime - creationTime) / 60000));
+  const executionTime = Math.max(1, Math.floor((deliveryTime - dispatchTime) / 60000));
+  const totalLeadTime = Math.max(1, Math.floor((deliveryTime - creationTime) / 60000));
+
+  // Obtener parámetros base del pedido, con valores por defecto si no existen
+  const stdTime = Math.max(1, parseInt(orderData.stdOpTime) || 10);
+  const complexity = Math.max(1, Math.min(5, parseInt(orderData.complexityWeight) || 1));
+  const targetLT = Math.max(1, parseInt(orderData.targetLeadTime) || 30);
+
+  // Calcular métricas derivadas
+  const taskEfficiency = Math.round((stdTime / executionTime) * 100);
+  const loadPoints = complexity * (complexity >= 4 ? 2 : 1);
+  const effortPoints = totalLeadTime <= targetLT ? Math.round(loadPoints * 1.5) : loadPoints;
+  const isSuspicious = executionTime < (stdTime * 0.2);
+  const onTime = totalLeadTime <= targetLT;
+
+  return {
+    reactionTime,
+    executionTime,
+    totalLeadTime,
+    taskEfficiency,
+    loadPoints,
+    effortPoints,
+    isSuspicious,
+    onTime,
+    complexityWeight: complexity,
+    stdOpTime: stdTime,
+    targetLeadTime: targetLT
+  };
+};
+
 // ============ COMPONENTE LOGIN ============
 const LoginScreen = ({ onLoginSuccess }) => {
   const [apellido, setApellido] = useState('');
@@ -912,27 +970,44 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
 
         // Si hay pedido EN TRÁNSITO → ENTREGA DIRECTA
         // REEMPLAZÁ EL BLOQUE DEL "if (existingOrder.status === 'IN_TRANSIT')" POR ESTE:
+        // Si hay pedido EN TRÁNSITO → ENTREGA DIRECTA
         if (existingOrder.exists && existingOrder.status === 'IN_TRANSIT') {
           const orderRef = doc(db, 'active_orders', existingOrder.orderId);
           const userName = currentUser.email.split('@')[0];
 
-          // 1. PASAR A COMPLETADOS
+          // 1. CALCULAR TODAS LAS MÉTRICAS DEL PEDIDO
+          const metrics = calculateOrderMetrics(existingOrder, new Date());
+
+          // 2. PASAR A COMPLETADOS CON TODOS LOS CAMPOS DE TIEMPO
           await addDoc(collection(db, 'completed_orders'), {
-            ...existingOrder,
+            // Datos básicos del pedido
+            cardId: existingOrder.cardId,
+            partNumber: existingOrder.partNumber,
+            description: existingOrder.description,
+            location: existingOrder.location,
+            standardPack: existingOrder.standardPack,
+            requestedBy: existingOrder.requestedBy,
+            takenBy: existingOrder.takenBy,
+
+            // Estado y quién lo entregó
             status: 'DELIVERED',
             deliveredAt: serverTimestamp(),
             deliveredBy: userName,
-            // Saneamiento de datos
-            complexityWeight: parseInt(existingOrder.complexityWeight || 1),
-            targetLeadTime: parseInt(existingOrder.targetLeadTime || 30)
+
+            // Timestamps originales
+            timestamp: existingOrder.timestamp,
+            dispatchedAt: existingOrder.dispatchedAt,
+
+            // 🔥 TODOS LOS CAMPOS DE TIEMPO Y MÉTRICAS
+            ...metrics
           });
 
-          // 2. ELIMINAR DE ACTIVOS
+          // 3. ELIMINAR DE ACTIVOS
           await deleteDoc(orderRef);
 
           setFeedback({
             type: 'success',
-            message: `✅ ENTREGA FINALIZADA\n📦 ${existingOrder.partNumber}\n👤 Por: ${userName}`
+            message: `✅ ENTREGA FINALIZADA\n📦 ${existingOrder.partNumber}\n👤 Por: ${userName}\n⏱️ Tiempo total: ${metrics.totalLeadTime} min`
           });
           setScanning(false);
           return;
