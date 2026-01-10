@@ -965,50 +965,100 @@ const OperatorView = ({ currentUser, onLogout, onOpenLogin }) => {
       }
 
       // ========== CASO B: CON LOGIN (ALMACÉN) ==========
+      // ========== CASO B: CON LOGIN (ALMACÉN) ==========
       else {
         const userName = currentUser.email.split('@')[0];
 
         // Si hay pedido EN TRÁNSITO → ENTREGA DIRECTA
-        // REEMPLAZÁ EL BLOQUE DEL "if (existingOrder.status === 'IN_TRANSIT')" POR ESTE:
-        // Si hay pedido EN TRÁNSITO → ENTREGA DIRECTA
         if (existingOrder.exists && existingOrder.status === 'IN_TRANSIT') {
-          const orderRef = doc(db, 'active_orders', existingOrder.orderId);
-          const userName = currentUser.email.split('@')[0];
+          try {
+            console.log('📦 Cerrando pedido desde OperatorView (QR)...');
 
-          // 1. CALCULAR TODAS LAS MÉTRICAS DEL PEDIDO
-          const metrics = calculateOrderMetrics(existingOrder, new Date());
+            const orderRef = doc(db, 'active_orders', existingOrder.orderId);
 
-          // 2. PASAR A COMPLETADOS CON TODOS LOS CAMPOS DE TIEMPO
-          await addDoc(collection(db, 'completed_orders'), {
-            // Datos básicos del pedido
-            cardId: existingOrder.cardId,
-            partNumber: existingOrder.partNumber,
-            description: existingOrder.description,
-            location: existingOrder.location,
-            standardPack: existingOrder.standardPack,
-            requestedBy: existingOrder.requestedBy,
-            takenBy: existingOrder.takenBy,
+            // 🔥 OBTENER EL DOCUMENTO COMPLETO (no solo lo que retorna checkExistingOrder)
+            const orderSnap = await getDoc(orderRef);
 
-            // Estado y quién lo entregó
-            status: 'DELIVERED',
-            deliveredAt: serverTimestamp(),
-            deliveredBy: userName,
+            if (!orderSnap.exists()) {
+              console.error('❌ Pedido no encontrado en active_orders');
+              setFeedback({
+                type: 'error',
+                message: '⚠️ ERROR\nEl pedido ya no existe en el sistema'
+              });
+              setScanning(false);
+              return;
+            }
 
-            // Timestamps originales
-            timestamp: existingOrder.timestamp,
-            dispatchedAt: existingOrder.dispatchedAt,
+            const fullOrderData = orderSnap.data();
+            console.log('📋 Datos completos del pedido:', {
+              cardId: fullOrderData.cardId,
+              hasTimestamp: !!fullOrderData.timestamp,
+              hasDispatchedAt: !!fullOrderData.dispatchedAt
+            });
 
-            // 🔥 TODOS LOS CAMPOS DE TIEMPO Y MÉTRICAS
-            ...metrics
-          });
+            // Validar que tenga los timestamps necesarios
+            if (!fullOrderData.timestamp || !fullOrderData.dispatchedAt) {
+              console.error('❌ Faltan timestamps en el pedido');
+              setFeedback({
+                type: 'error',
+                message: '⚠️ ERROR\nEl pedido no tiene los datos completos.\nContacte al supervisor.'
+              });
+              setScanning(false);
+              return;
+            }
 
-          // 3. ELIMINAR DE ACTIVOS
-          await deleteDoc(orderRef);
+            // 🔥 CALCULAR MÉTRICAS CON EL OBJETO COMPLETO
+            const metrics = calculateOrderMetrics(fullOrderData, new Date());
 
-          setFeedback({
-            type: 'success',
-            message: `✅ ENTREGA FINALIZADA\n📦 ${existingOrder.partNumber}\n👤 Por: ${userName}\n⏱️ Tiempo total: ${metrics.totalLeadTime} min`
-          });
+            console.log('⏱️ Métricas calculadas:', {
+              reactionTime: metrics.reactionTime,
+              executionTime: metrics.executionTime,
+              totalLeadTime: metrics.totalLeadTime
+            });
+
+            // 1. GUARDAR EN COMPLETED_ORDERS
+            await addDoc(collection(db, 'completed_orders'), {
+              // Datos básicos del pedido
+              cardId: fullOrderData.cardId,
+              partNumber: fullOrderData.partNumber,
+              description: fullOrderData.description,
+              location: fullOrderData.location,
+              standardPack: fullOrderData.standardPack,
+              requestedBy: fullOrderData.requestedBy,
+              takenBy: fullOrderData.takenBy,
+
+              // Estado y quién lo entregó
+              status: 'DELIVERED',
+              deliveredAt: serverTimestamp(),
+              deliveredBy: userName,
+
+              // Timestamps originales
+              timestamp: fullOrderData.timestamp,
+              dispatchedAt: fullOrderData.dispatchedAt,
+
+              // 🔥 TODAS LAS MÉTRICAS CALCULADAS
+              ...metrics
+            });
+
+            console.log('✅ Pedido guardado en completed_orders');
+
+            // 2. ELIMINAR DE ACTIVOS
+            await deleteDoc(orderRef);
+            console.log('✅ Pedido eliminado de active_orders');
+
+            setFeedback({
+              type: 'success',
+              message: `✅ ENTREGA FINALIZADA\n📦 ${fullOrderData.partNumber}\n📍 ${fullOrderData.location}\n👤 Por: ${userName}\n⏱️ Tiempo total: ${metrics.totalLeadTime} min`
+            });
+
+          } catch (error) {
+            console.error('❌ Error al cerrar pedido:', error);
+            setFeedback({
+              type: 'error',
+              message: `✗ ERROR AL CERRAR PEDIDO\n${error.message}`
+            });
+          }
+
           setScanning(false);
           return;
         }
