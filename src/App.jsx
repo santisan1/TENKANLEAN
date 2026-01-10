@@ -1223,26 +1223,49 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
 
       } else if (newStatus === 'DELIVERED') {
         const orderSnap = await getDoc(orderRef);
-        if (!orderSnap.exists()) return;
+        if (!orderSnap.exists()) {
+          console.error('Pedido no encontrado');
+          return;
+        }
+
         const data = orderSnap.data();
+        console.log('📦 Datos del pedido a completar:', data);
+
+        // Verificar que tenemos todos los timestamps necesarios
+        if (!data.timestamp || !data.dispatchedAt) {
+          console.error('❌ Faltan timestamps en el pedido:', {
+            hasTimestamp: !!data.timestamp,
+            hasDispatchedAt: !!data.dispatchedAt
+          });
+          return;
+        }
 
         const now = Date.now();
         const t_creacion = data.timestamp.toMillis();
         const t_aceptado = data.dispatchedAt.toMillis();
-        const t_entregado = now;
 
         // 1. TIEMPOS SEGMENTADOS (en minutos)
         const reactionTime = Math.round((t_aceptado - t_creacion) / 60000);
-        const executionTime = Math.round((t_entregado - t_aceptado) / 60000);
-        const totalLeadTime = Math.round((t_entregado - t_creacion) / 60000);
+        const executionTime = Math.round((now - t_aceptado) / 60000);
+        const totalLeadTime = Math.round((now - t_creacion) / 60000);
+
+        console.log('⏱️ Tiempos calculados:', {
+          reactionTime,
+          executionTime,
+          totalLeadTime
+        });
 
         // 2. CÁLCULO DE EFICIENCIA Y CARGA
-        const stdTime = parseInt(data.stdOpTime || 10);
-        const complexity = parseInt(data.complexityWeight || 1);
-        const targetLT = parseInt(data.targetLeadTime || 30);
+        const stdTime = parseInt(data.stdOpTime) || 10;
+        const complexity = parseInt(data.complexityWeight) || 1;
+        const targetLT = parseInt(data.targetLeadTime) || 30;
+
+        console.log('📊 Parámetros:', { stdTime, complexity, targetLT });
 
         // Eficiencia de Tarea (cuánto mejor que el estándar)
-        const taskEfficiency = Math.round((stdTime / executionTime) * 100);
+        const taskEfficiency = executionTime > 0
+          ? Math.round((stdTime / executionTime) * 100)
+          : 100;
 
         // Puntos de Carga Acumulada (Niveles 4-5 valen mucho más)
         const loadPoints = complexity * (complexity >= 4 ? 2 : 1);
@@ -1256,34 +1279,51 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
         // 4. CUMPLIMIENTO DE SLA
         const onTime = totalLeadTime <= targetLT;
 
-        // 5. GUARDAR EN COMPLETED_ORDERS
-        await addDoc(collection(db, 'completed_orders'), {
-          ...data,
-          status: 'DELIVERED',
-          deliveredAt: serverTimestamp(),
-          deliveredBy: currentUser.email.split('@')[0],
-
-          // Tiempos Segmentados
-          reactionTime,
-          executionTime,
-          totalLeadTime,
-
-          // Métricas de Desempeño
+        console.log('✅ Métricas finales:', {
           taskEfficiency,
           loadPoints,
           effortPoints,
-
-          // Flags de Control
           isSuspicious,
-          onTime,
-
-          // Data Sanitizada
-          complexityWeight: complexity,
-          stdOpTime: stdTime,
-          targetLeadTime: targetLT
+          onTime
         });
 
-        await deleteDoc(orderRef);
+        // 5. GUARDAR EN COMPLETED_ORDERS
+        try {
+          const completedDoc = await addDoc(collection(db, 'completed_orders'), {
+            ...data,
+            status: 'DELIVERED',
+            deliveredAt: serverTimestamp(),
+            deliveredBy: currentUser.email.split('@')[0],
+
+            // Tiempos Segmentados
+            reactionTime,
+            executionTime,
+            totalLeadTime,
+
+            // Métricas de Desempeño
+            taskEfficiency,
+            loadPoints,
+            effortPoints,
+
+            // Flags de Control
+            isSuspicious,
+            onTime,
+
+            // Data Sanitizada
+            complexityWeight: complexity,
+            stdOpTime: stdTime,
+            targetLeadTime: targetLT
+          });
+
+          console.log('✅ Pedido guardado en completed_orders con ID:', completedDoc.id);
+
+          // Eliminar de activos
+          await deleteDoc(orderRef);
+          console.log('✅ Pedido eliminado de active_orders');
+
+        } catch (saveError) {
+          console.error('❌ Error guardando en completed_orders:', saveError);
+        }
       }
     } catch (error) { console.error('Error al cerrar pedido:', error); }
   };
