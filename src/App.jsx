@@ -237,7 +237,7 @@ const KPIView = ({ currentUser }) => {
 
     // Operativo: Ranking por Justicia Operativa
     operatorRanking: [],
-
+    orders: [],
     // Analítico: Desglose de Tiempos
     avgReactionTime: 0,
     avgExecutionTime: 0,
