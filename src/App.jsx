@@ -428,7 +428,9 @@ const KPIView = ({ currentUser }) => {
           avgExecutionTime: avgExecution,
           topMaterials,
           problemMaterials,
-          hourlyHeatmap: hourlyMap,
+
+          hourlyHeatmap: hourlyCreationMap.map(h => h.count),
+
           suspiciousRate,
           hourlyLeadTimes: hourlyCreationMap.map(h => h.avgLeadTime)
         });
