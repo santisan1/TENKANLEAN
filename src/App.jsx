@@ -624,43 +624,181 @@ const KPIView = ({ currentUser }) => {
       <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
           <BarChart3 className="w-7 h-7 text-blue-400" />
-          Heatmap Horario • Planificación de Turnos
+          Distribución Horaria de Pedidos • Planificación de Turnos
         </h2>
-        <div className="flex items-end justify-between h-64 gap-1">
+
+        <div className="grid grid-cols-24 gap-1 mb-6">
           {kpiData.hourlyHeatmap.map((count, hour) => {
             const maxCount = Math.max(...kpiData.hourlyHeatmap);
-            const height = maxCount > 0 ? (count / maxCount) * 100 : 0;
+            const intensity = maxCount > 0 ? (count / maxCount) : 0;
             const isPeak = count >= maxCount * 0.7;
+            const avgLT = kpiData.hourlyLeadTimes?.[hour] || 0;
 
             return (
-              <div key={hour} className="flex-1 flex flex-col items-center gap-2">
+              <div key={hour} className="flex flex-col items-center gap-1">
+                {/* Barra vertical */}
                 <div
-                  className={`w-full rounded-t-lg transition-all hover:opacity-80 cursor-pointer ${isPeak
+                  className={`w-full h-32 rounded-t-lg transition-all hover:opacity-80 cursor-pointer relative group ${isPeak
                     ? 'bg-gradient-to-t from-orange-500 to-red-500'
-                    : 'bg-gradient-to-t from-blue-500 to-blue-600'
+                    : count > 0
+                      ? 'bg-gradient-to-t from-blue-500 to-blue-600'
+                      : 'bg-gray-800'
                     }`}
-                  style={{ height: `${height}%` }}
-                  title={`${count} entregas a las ${hour}:00`}
-                />
-                <span className={`text-[10px] ${isPeak ? 'text-orange-400 font-bold' : 'text-gray-500'}`}>
-                  {hour}h
+                  style={{
+                    opacity: count > 0 ? Math.max(0.3, intensity) : 0.1
+                  }}
+                  title={`${hour}:00 - ${count} pedidos - ${avgLT}min promedio`}
+                >
+                  {/* Tooltip al hover */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 text-xs whitespace-nowrap shadow-xl">
+                      <p className="text-white font-bold mb-1">{hour}:00</p>
+                      <p className="text-gray-300">{count} pedidos</p>
+                      <p className="text-blue-400">{avgLT}min avg</p>
+                    </div>
+                  </div>
+
+                  {/* Número de pedidos dentro de la barra */}
+                  {count > 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-white font-bold text-xs">{count}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Etiqueta de hora */}
+                <span className={`text-[10px] font-mono ${isPeak ? 'text-orange-400 font-bold' : 'text-gray-500'
+                  }`}>
+                  {hour.toString().padStart(2, '0')}h
                 </span>
               </div>
             );
           })}
         </div>
-        <div className="mt-6 flex items-center justify-center gap-6 text-sm">
+
+        {/* Leyenda mejorada */}
+        <div className="flex items-center justify-center gap-8 text-sm">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded bg-gradient-to-t from-orange-500 to-red-500" />
-            <span className="text-gray-400">Horas Pico (reforzar personal)</span>
+            <span className="text-gray-400">Horas Pico (≥70% del máximo)</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded bg-gradient-to-t from-blue-500 to-blue-600" />
             <span className="text-gray-400">Carga Normal</span>
           </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded bg-gray-800" />
+            <span className="text-gray-400">Sin actividad</span>
+          </div>
+        </div>
+
+        {/* Insights adicionales */}
+        <div className="mt-6 grid grid-cols-3 gap-4">
+          <div className="bg-gray-800/50 rounded-lg p-4">
+            <p className="text-xs text-gray-400 mb-1">Hora Pico</p>
+            <p className="text-2xl font-bold text-orange-400">
+              {kpiData.hourlyHeatmap.indexOf(Math.max(...kpiData.hourlyHeatmap))}:00
+            </p>
+          </div>
+          <div className="bg-gray-800/50 rounded-lg p-4">
+            <p className="text-xs text-gray-400 mb-1">Pedidos en Pico</p>
+            <p className="text-2xl font-bold text-white">
+              {Math.max(...kpiData.hourlyHeatmap)}
+            </p>
+          </div>
+          <div className="bg-gray-800/50 rounded-lg p-4">
+            <p className="text-xs text-gray-400 mb-1">Lead Time en Pico</p>
+            <p className="text-2xl font-bold text-blue-400">
+              {kpiData.hourlyLeadTimes?.[kpiData.hourlyHeatmap.indexOf(Math.max(...kpiData.hourlyHeatmap))] || 0}min
+            </p>
+          </div>
         </div>
       </div>
+      {/* === ANÁLISIS DE VARIABILIDAD === */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Distribución de Lead Times */}
+        <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <Activity className="w-6 h-6 text-purple-400" />
+            Distribución de Lead Times
+          </h2>
+          <div className="space-y-4">
+            {(() => {
+              const leadTimes = orders.map(o => o.totalLeadTime || 0);
+              const ranges = [
+                { label: '< 15min', count: leadTimes.filter(t => t < 15).length, color: 'green' },
+                { label: '15-30min', count: leadTimes.filter(t => t >= 15 && t < 30).length, color: 'blue' },
+                { label: '30-45min', count: leadTimes.filter(t => t >= 30 && t < 45).length, color: 'yellow' },
+                { label: '> 45min', count: leadTimes.filter(t => t >= 45).length, color: 'red' }
+              ];
+              const maxCount = Math.max(...ranges.map(r => r.count));
 
+              return ranges.map((range, idx) => (
+                <div key={idx} className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">{range.label}</span>
+                    <span className="text-white font-bold">{range.count} pedidos</span>
+                  </div>
+                  <div className="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${range.color === 'green' ? 'bg-green-500' :
+                        range.color === 'blue' ? 'bg-blue-500' :
+                          range.color === 'yellow' ? 'bg-yellow-500' :
+                            'bg-red-500'
+                        }`}
+                      style={{ width: `${maxCount > 0 ? (range.count / maxCount) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+
+        {/* Tasa de Utilización por Ubicación */}
+        <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <MapPin className="w-6 h-6 text-blue-400" />
+            Demanda por Ubicación
+          </h2>
+          <div className="space-y-3">
+            {(() => {
+              const locationMap = {};
+              orders.forEach(o => {
+                const loc = o.location || 'Desconocido';
+                if (!locationMap[loc]) {
+                  locationMap[loc] = { count: 0, avgLT: 0, totalLT: 0 };
+                }
+                locationMap[loc].count++;
+                locationMap[loc].totalLT += (o.totalLeadTime || 0);
+              });
+
+              return Object.entries(locationMap)
+                .sort((a, b) => b[1].count - a[1].count)
+                .map(([loc, data]) => {
+                  data.avgLT = Math.round(data.totalLT / data.count);
+                  return (
+                    <div key={loc} className="flex items-center justify-between bg-gray-800/50 rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                          <MapPin className="w-5 h-5 text-blue-400" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-white">{loc}</p>
+                          <p className="text-xs text-gray-400">{data.avgLT}min promedio</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-blue-400">{data.count}</p>
+                        <p className="text-xs text-gray-500">pedidos</p>
+                      </div>
+                    </div>
+                  );
+                });
+            })()}
+          </div>
+        </div>
+      </div>
       {/* Top Materiales y Problemáticos */}
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
