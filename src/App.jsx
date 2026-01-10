@@ -401,12 +401,21 @@ const KPIView = ({ currentUser }) => {
 
         // === PREDICTIVO: HEATMAP HORARIO ===
 
-        const hourlyMap = Array(24).fill(0);
+        // === PREDICTIVO: HEATMAP HORARIO (por hora de CREACIÓN del pedido) ===
+
+        const hourlyCreationMap = Array(24).fill(0).map(() => ({ count: 0, avgLeadTime: 0, totalTime: 0 }));
+
         orders.forEach(o => {
-          if (o.deliveredAt) {
-            const hour = o.deliveredAt.toDate().getHours();
-            hourlyMap[hour]++;
+          if (o.timestamp) {
+            const hour = o.timestamp.toDate().getHours();
+            hourlyCreationMap[hour].count++;
+            hourlyCreationMap[hour].totalTime += (o.totalLeadTime || 0);
           }
+        });
+
+        // Calcular promedio de lead time por hora
+        hourlyCreationMap.forEach(h => {
+          h.avgLeadTime = h.count > 0 ? Math.round(h.totalTime / h.count) : 0;
         });
 
         setKpiData({
@@ -420,7 +429,8 @@ const KPIView = ({ currentUser }) => {
           topMaterials,
           problemMaterials,
           hourlyHeatmap: hourlyMap,
-          suspiciousRate
+          suspiciousRate,
+          hourlyLeadTimes: hourlyCreationMap.map(h => h.avgLeadTime)
         });
 
       } catch (error) {
