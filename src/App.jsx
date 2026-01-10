@@ -255,6 +255,9 @@ const KPIView = ({ currentUser }) => {
 
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('today');
+  const [heatmapMode, setHeatmapMode] = useState('volume'); // 'volume', 'leadTime', 'efficiency'
+  const [selectedDay, setSelectedDay] = useState('all');
+  const [heatmapData, setHeatmapData] = useState([]);
 
   useEffect(() => {
     const fetchKPIs = async () => {
