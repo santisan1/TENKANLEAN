@@ -352,7 +352,46 @@ const KPIView = ({ currentUser }) => {
           .sort((a, b) => b.effortPoints - a.effortPoints);
 
         // === DIMENSIÓN 3: SERVICIO ===
+        // Dentro del fetchKPIs, después de procesar los pedidos...
 
+        // Procesar datos para heatmap semanal
+        const hourlyAnalysis = {};
+        orders.forEach(order => {
+          if (order.timestamp) {
+            const date = order.timestamp.toDate();
+            const day = date.getDay(); // 0=domingo, 1=lunes...
+            const hour = date.getHours();
+            const key = `${day}-${hour}`;
+
+            if (!hourlyAnalysis[key]) {
+              hourlyAnalysis[key] = {
+                day,
+                hour,
+                volume: 0,
+                totalLeadTime: 0,
+                totalEfficiency: 0,
+                operators: new Set()
+              };
+            }
+
+            hourlyAnalysis[key].volume++;
+            hourlyAnalysis[key].totalLeadTime += (order.totalLeadTime || 0);
+            hourlyAnalysis[key].totalEfficiency += (order.taskEfficiency || 100);
+            if (order.deliveredBy) hourlyAnalysis[key].operators.add(order.deliveredBy);
+          }
+        });
+
+        // Convertir a array y calcular promedios
+        const processedHeatmapData = Object.values(hourlyAnalysis).map(item => ({
+          day: item.day,
+          hour: item.hour,
+          volume: item.volume,
+          leadTime: Math.round(item.totalLeadTime / item.volume),
+          efficiency: Math.round(item.totalEfficiency / item.volume),
+          operators: Array.from(item.operators).map(op => ({ name: op }))
+        }));
+
+        setHeatmapData(processedHeatmapData);
         // Tiempos Promedio Segmentados
         const avgReaction = Math.round(
           orders.reduce((sum, o) => sum + (o.reactionTime || 0), 0) / orders.length
