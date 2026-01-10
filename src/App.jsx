@@ -432,7 +432,8 @@ const KPIView = ({ currentUser }) => {
           hourlyHeatmap: hourlyCreationMap.map(h => h.count),
 
           suspiciousRate,
-          hourlyLeadTimes: hourlyCreationMap.map(h => h.avgLeadTime)
+          hourlyLeadTimes: hourlyCreationMap.map(h => h.avgLeadTime),
+          orders: orders
         });
 
       } catch (error) {
@@ -726,7 +727,7 @@ const KPIView = ({ currentUser }) => {
           </h2>
           <div className="space-y-4">
             {(() => {
-              const leadTimes = orders.map(o => o.totalLeadTime || 0);
+              const leadTimes = kpiData.orders.map(o => o.totalLeadTime || 0);
               const ranges = [
                 { label: '< 15min', count: leadTimes.filter(t => t < 15).length, color: 'green' },
                 { label: '15-30min', count: leadTimes.filter(t => t >= 15 && t < 30).length, color: 'blue' },
@@ -766,7 +767,7 @@ const KPIView = ({ currentUser }) => {
           <div className="space-y-3">
             {(() => {
               const locationMap = {};
-              orders.forEach(o => {
+              kpiData.orders.forEach(o => {
                 const loc = o.location || 'Desconocido';
                 if (!locationMap[loc]) {
                   locationMap[loc] = { count: 0, avgLT: 0, totalLT: 0 };
