@@ -623,97 +623,386 @@ const KPIView = ({ currentUser }) => {
         </div>
       </div>
 
-      {/* === NIVEL PREDICTIVO === */}
-      <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
-        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-          <BarChart3 className="w-7 h-7 text-blue-400" />
-          Distribución Horaria de Pedidos • Planificación de Turnos
-        </h2>
+      {/* === INTELIGENCIA OPERATIVA - PANEL 4D === */}
+      <div className="space-y-6">
+        {/* HEADER CON FILTROS AVANZADOS */}
+        <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <BarChart3 className="w-7 h-7 text-blue-400" />
+                Inteligencia Operativa 4D
+              </h2>
+              <p className="text-gray-400 text-sm mt-1">Heatmap predictivo + Análisis de tendencias</p>
+            </div>
 
-        <div className="grid grid-cols-24 gap-1 mb-6">
-          {kpiData.hourlyHeatmap.map((count, hour) => {
-            const maxCount = Math.max(...kpiData.hourlyHeatmap);
-            const intensity = maxCount > 0 ? (count / maxCount) : 0;
-            const isPeak = count >= maxCount * 0.7;
-            const avgLT = kpiData.hourlyLeadTimes?.[hour] || 0;
+            <div className="flex flex-wrap gap-3">
+              <select
+                className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                value={heatmapMode}
+                onChange={(e) => setHeatmapMode(e.target.value)}
+              >
+                <option value="volume">📊 Volumen de Pedidos</option>
+                <option value="leadTime">⏱️ Lead Time Promedio</option>
+                <option value="efficiency">⚡ Eficiencia Operativa</option>
+              </select>
 
-            return (
-              <div key={hour} className="flex flex-col items-center gap-1">
-                {/* Barra vertical */}
-                <div
-                  className={`w-full h-32 rounded-t-lg transition-all hover:opacity-80 cursor-pointer relative group ${isPeak
-                    ? 'bg-gradient-to-t from-orange-500 to-red-500'
-                    : count > 0
-                      ? 'bg-gradient-to-t from-blue-500 to-blue-600'
-                      : 'bg-gray-800'
-                    }`}
-                  style={{
-                    opacity: count > 0 ? Math.max(0.3, intensity) : 0.1
-                  }}
-                  title={`${hour}:00 - ${count} pedidos - ${avgLT}min promedio`}
-                >
-                  {/* Tooltip al hover */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                    <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 text-xs whitespace-nowrap shadow-xl">
-                      <p className="text-white font-bold mb-1">{hour}:00</p>
-                      <p className="text-gray-300">{count} pedidos</p>
-                      <p className="text-blue-400">{avgLT}min avg</p>
+              <select
+                className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(e.target.value)}
+              >
+                <option value="all">Toda la semana</option>
+                <option value="0">Lunes</option>
+                <option value="1">Martes</option>
+                <option value="2">Miércoles</option>
+                <option value="3">Jueves</option>
+                <option value="4">Viernes</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* GRID PRINCIPAL 2x2 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* COLUMNA IZQUIERDA: HEATMAP MEJORADO + ALERTAS PREDICTIVAS */}
+          <div className="space-y-6">
+
+            {/* HEATMAP MEJORADO */}
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">
+                  {heatmapMode === 'volume' ? '🌡️ Densidad Horaria' :
+                    heatmapMode === 'leadTime' ? '⏱️ Tiempos por Hora' :
+                      '⚡ Eficiencia por Hora'}
+                </h3>
+                <div className="text-sm text-gray-400">
+                  {selectedDay === 'all' ? 'Semana completa' : `Día ${parseInt(selectedDay) + 1}`}
+                </div>
+              </div>
+
+              {/* HEATMAP VISUAL MEJORADO */}
+              <div className="mb-6">
+                <div className="grid grid-cols-12 gap-1.5 mb-3">
+                  {/* Horas en header */}
+                  <div className="col-span-2"></div>
+                  {Array.from({ length: 12 }, (_, i) => i + 8).map(hour => (
+                    <div key={hour} className="text-center">
+                      <span className="text-xs text-gray-400 font-mono">{hour}h</span>
                     </div>
-                  </div>
+                  ))}
+                </div>
 
-                  {/* Número de pedidos dentro de la barra */}
-                  {count > 0 && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-white font-bold text-xs">{count}</span>
+                {/* Filas del heatmap */}
+                <div className="space-y-1.5">
+                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie'].map((day, dayIndex) => (
+                    <div key={day} className="grid grid-cols-12 gap-1.5 items-center">
+                      {/* Día */}
+                      <div className="col-span-2">
+                        <div className={`px-3 py-2 rounded-lg ${selectedDay === dayIndex.toString() ? 'bg-blue-500/20 border border-blue-500/30' : 'bg-gray-800/50'}`}>
+                          <span className="text-sm font-medium text-white">{day}</span>
+                        </div>
+                      </div>
+
+                      {/* Celdas del heatmap */}
+                      {Array.from({ length: 12 }, (_, hourIndex) => {
+                        const hour = hourIndex + 8;
+                        const dayData = heatmapData.find(d => d.day === dayIndex && d.hour === hour);
+                        let value = dayData ? dayData[heatmapMode] : 0;
+
+                        // Escalar según el modo
+                        let intensity = 0;
+                        if (heatmapMode === 'volume') {
+                          const maxVolume = Math.max(...heatmapData.map(d => d.volume));
+                          intensity = maxVolume > 0 ? value / maxVolume : 0;
+                        } else if (heatmapMode === 'leadTime') {
+                          intensity = Math.min(value / 60, 1); // Máximo 60 minutos
+                        } else {
+                          intensity = value / 100; // Eficiencia como porcentaje
+                        }
+
+                        // Color basado en intensidad y modo
+                        let bgColor = 'bg-gray-800';
+                        let borderColor = 'border-gray-700';
+                        let textColor = 'text-gray-400';
+
+                        if (intensity > 0) {
+                          if (heatmapMode === 'volume') {
+                            // Verde para volumen (más oscuro = más volumen)
+                            const greenIntensity = Math.min(100 + Math.floor(intensity * 155), 255);
+                            bgColor = `bg-green-900/70`;
+                            borderColor = 'border-green-600/40';
+                            textColor = 'text-green-300';
+                          } else if (heatmapMode === 'leadTime') {
+                            // Rojo para tiempos altos
+                            const redIntensity = Math.min(100 + Math.floor(intensity * 155), 255);
+                            bgColor = `bg-red-900/70`;
+                            borderColor = intensity > 0.7 ? 'border-red-500/60' : 'border-red-600/30';
+                            textColor = intensity > 0.7 ? 'text-red-300' : 'text-red-400';
+                          } else {
+                            // Azul para eficiencia
+                            const blueIntensity = Math.min(100 + Math.floor(intensity * 155), 255);
+                            bgColor = `bg-blue-900/70`;
+                            borderColor = 'border-blue-600/40';
+                            textColor = 'text-blue-300';
+                          }
+                        }
+
+                        // Determinar si es hora crítica
+                        const isCritical = heatmapMode === 'leadTime' && intensity > 0.7;
+
+                        return (
+                          <div
+                            key={`${day}-${hour}`}
+                            className={`relative group ${bgColor} border ${borderColor} rounded-lg p-3 transition-all hover:scale-105 hover:shadow-lg cursor-pointer ${isCritical ? 'animate-pulse' : ''}`}
+                          >
+                            {/* Valor */}
+                            <div className="text-center">
+                              <div className={`text-sm font-bold ${textColor} mb-1`}>
+                                {heatmapMode === 'volume' ? value :
+                                  heatmapMode === 'leadTime' ? `${Math.round(value)}m` :
+                                    `${Math.round(value)}%`}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {hour}:00
+                              </div>
+                            </div>
+
+                            {/* Tooltip avanzado */}
+                            <div className="absolute z-50 invisible group-hover:visible bottom-full left-1/2 -translate-x-1/2 mb-2 w-48">
+                              <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 shadow-2xl">
+                                <p className="font-bold text-white mb-2">{day} {hour}:00</p>
+                                <div className="space-y-2 text-xs">
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-400">Pedidos:</span>
+                                    <span className="text-green-300 font-bold">{dayData?.volume || 0}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-400">Lead Time:</span>
+                                    <span className={`font-bold ${dayData?.leadTime > 30 ? 'text-red-300' : 'text-blue-300'}`}>
+                                      {dayData?.leadTime || 0}m
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-400">Eficiencia:</span>
+                                    <span className="text-yellow-300 font-bold">{dayData?.efficiency || 0}%</span>
+                                  </div>
+                                  {dayData?.operators && (
+                                    <div className="pt-2 border-t border-gray-800">
+                                      <p className="text-gray-400 mb-1">Operarios activos:</p>
+                                      <div className="flex flex-wrap gap-1">
+                                        {dayData.operators.slice(0, 3).map((op, idx) => (
+                                          <span key={idx} className="px-2 py-1 bg-gray-800 rounded text-xs">
+                                            {op.name}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* LEYENDA INTERACTIVA */}
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-r from-green-900/70 to-green-600/70"></div>
+                    <span className="text-gray-400">Volumen bajo</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-r from-green-600/70 to-green-400/70"></div>
+                    <span className="text-gray-400">Volumen alto</span>
+                  </div>
+                  {heatmapMode === 'leadTime' && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded bg-red-600/70 animate-pulse"></div>
+                      <span className="text-red-300 font-bold">¡CRÍTICO! &gt; 42m</span>
                     </div>
                   )}
                 </div>
-
-                {/* Etiqueta de hora */}
-                <span className={`text-[10px] font-mono ${isPeak ? 'text-orange-400 font-bold' : 'text-gray-500'
-                  }`}>
-                  {hour.toString().padStart(2, '0')}h
-                </span>
               </div>
-            );
-          })}
-        </div>
+            </div>
 
-        {/* Leyenda mejorada */}
-        <div className="flex items-center justify-center gap-8 text-sm">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-gradient-to-t from-orange-500 to-red-500" />
-            <span className="text-gray-400">Horas Pico (≥70% del máximo)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-gradient-to-t from-blue-500 to-blue-600" />
-            <span className="text-gray-400">Carga Normal</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-gray-800" />
-            <span className="text-gray-400">Sin actividad</span>
-          </div>
-        </div>
+            {/* ALERTAS PREDICTIVAS */}
+            <div className="bg-gradient-to-br from-orange-500/10 to-red-500/10 backdrop-blur-sm rounded-2xl border border-orange-500/30 p-6">
+              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                <AlertTriangle className="w-6 h-6 text-orange-400" />
+                Alertas Predictivas
+              </h3>
 
-        {/* Insights adicionales */}
-        <div className="mt-6 grid grid-cols-3 gap-4">
-          <div className="bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-400 mb-1">Hora Pico</p>
-            <p className="text-2xl font-bold text-orange-400">
-              {kpiData.hourlyHeatmap.indexOf(Math.max(...kpiData.hourlyHeatmap))}:00
-            </p>
+              <div className="space-y-4">
+                {predictiveAlerts.map((alert, idx) => (
+                  <div key={idx} className={`p-4 rounded-xl border ${alert.type === 'critical' ? 'bg-red-500/10 border-red-500/30' : 'bg-yellow-500/10 border-yellow-500/30'}`}>
+                    <div className="flex items-start gap-3">
+                      {alert.type === 'critical' ? (
+                        <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <AlertTriangle className="w-5 h-5 text-red-400" />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Info className="w-5 h-5 text-yellow-400" />
+                        </div>
+                      )}
+                      <div className="flex-1">
+                        <p className={`font-bold ${alert.type === 'critical' ? 'text-red-300' : 'text-yellow-300'}`}>
+                          {alert.title}
+                        </p>
+                        <p className="text-sm text-gray-300 mt-1">{alert.message}</p>
+                        <div className="flex items-center gap-4 mt-2 text-xs">
+                          <span className="text-gray-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {alert.time}
+                          </span>
+                          <span className="text-gray-400 flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {alert.location}
+                          </span>
+                          <span className="text-gray-400 flex items-center gap-1">
+                            <Activity className="w-3 h-3" />
+                            {alert.confidence}% confianza
+                          </span>
+                        </div>
+                      </div>
+                      <button className="px-3 py-1 bg-gray-800/50 hover:bg-gray-700 rounded-lg text-xs text-gray-300 transition-colors">
+                        Acción
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-400 mb-1">Pedidos en Pico</p>
-            <p className="text-2xl font-bold text-white">
-              {Math.max(...kpiData.hourlyHeatmap)}
-            </p>
-          </div>
-          <div className="bg-gray-800/50 rounded-lg p-4">
-            <p className="text-xs text-gray-400 mb-1">Lead Time en Pico</p>
-            <p className="text-2xl font-bold text-blue-400">
-              {kpiData.hourlyLeadTimes?.[kpiData.hourlyHeatmap.indexOf(Math.max(...kpiData.hourlyHeatmap))] || 0}min
-            </p>
+
+          {/* COLUMNA DERECHA: TENDENCIA SEMANAL + COMPARATIVA DE OPERARIOS */}
+          <div className="space-y-6">
+
+            {/* TENDENCIA SEMANAL */}
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                <TrendingUp className="w-6 h-6 text-purple-400" />
+                Tendencia Semanal
+              </h3>
+
+              <div className="space-y-4">
+                {weeklyTrendData.map((day, idx) => (
+                  <div key={idx} className="p-4 bg-gray-800/30 rounded-xl border border-gray-700">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${day.change >= 0 ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                          {day.change >= 0 ? (
+                            <TrendingUp className="w-5 h-5 text-green-400" />
+                          ) : (
+                            <TrendingDown className="w-5 h-5 text-red-400" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-white">{day.name}</p>
+                          <p className="text-xs text-gray-400">{day.date}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-white">{day.orders}</p>
+                        <p className={`text-xs ${day.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {day.change >= 0 ? '+' : ''}{day.change}%
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Barras de métricas */}
+                    <div className="grid grid-cols-3 gap-2 mt-4">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-blue-400">{day.avgLeadTime}m</div>
+                        <div className="text-xs text-gray-400">Lead Time</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-green-400">{day.efficiency}%</div>
+                        <div className="text-xs text-gray-400">Eficiencia</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-yellow-400">{day.operators}</div>
+                        <div className="text-xs text-gray-400">Operarios</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* COMPARATIVA DE OPERARIOS */}
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                <Users className="w-6 h-6 text-blue-400" />
+                Comparativa de Operarios
+              </h3>
+
+              <div className="space-y-4">
+                {operatorComparison.map((op, idx) => (
+                  <div key={idx} className="p-4 bg-gray-800/30 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${idx < 3 ? 'bg-gradient-to-br from-yellow-500/20 to-orange-500/20 text-yellow-400' : 'bg-gray-700 text-gray-400'}`}>
+                          #{idx + 1}
+                        </div>
+                        <div>
+                          <p className="font-bold text-white capitalize">{op.name}</p>
+                          <p className="text-xs text-gray-400">{op.role}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-orange-400">{op.score}</p>
+                        <p className="text-xs text-gray-400">Puntuación</p>
+                      </div>
+                    </div>
+
+                    {/* Especialización por hora */}
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-400 mb-2">Pico de rendimiento:</p>
+                      <div className="flex items-center gap-2">
+                        {op.peakHours.map((hour, hIdx) => (
+                          <span key={hIdx} className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">
+                            {hour}:00
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Barra de métricas */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-400">Velocidad</span>
+                        <span className="text-green-400 font-bold">{op.speed}%</span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-1.5">
+                        <div
+                          className="bg-green-500 h-1.5 rounded-full"
+                          style={{ width: `${op.speed}%` }}
+                        ></div>
+                      </div>
+
+                      <div className="flex justify-between text-xs mt-2">
+                        <span className="text-gray-400">Precisión</span>
+                        <span className="text-blue-400 font-bold">{op.accuracy}%</span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-1.5">
+                        <div
+                          className="bg-blue-500 h-1.5 rounded-full"
+                          style={{ width: `${op.accuracy}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
