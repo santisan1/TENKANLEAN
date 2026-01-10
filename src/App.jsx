@@ -261,35 +261,37 @@ const KPIView = ({ currentUser }) => {
   // 1. Alertas Predictivas
   const predictiveAlerts = React.useMemo(() => {
     const alerts = [];
+    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
     heatmapData.forEach(item => {
-      if (item.leadTime > 30) {
-        const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      if (item.leadTime > 30 && item.volume >= 2) {
         alerts.push({
           type: 'critical',
           title: `Lead Time Alto el ${dayNames[item.day]} a las ${item.hour}:00`,
-          message: `El lead time promedio fue de ${item.leadTime} minutos, supera el umbral de 30 minutos.`,
+          message: `${item.volume} pedidos con lead time promedio de ${item.leadTime} min (objetivo: 30 min)`,
           time: `${item.hour}:00`,
-          location: 'Varias ubicaciones',
-          confidence: 80
+          location: 'Análisis histórico',
+          confidence: Math.min(90, 60 + (item.volume * 10))
         });
       }
     });
 
     if (alerts.length === 0) {
+      const highestLT = Math.max(...heatmapData.map(h => h.leadTime));
+      const criticalHour = heatmapData.find(h => h.leadTime === highestLT);
+
       alerts.push({
         type: 'info',
-        title: 'Sin alertas críticas',
-        message: 'El lead time se mantiene dentro de los límites establecidos.',
-        time: 'Hoy',
+        title: highestLT > 0 ? `Pico de ${highestLT}min el ${dayNames[criticalHour.day]} a las ${criticalHour.hour}:00` : 'Sin alertas críticas',
+        message: highestLT > 0 ? 'Hora con mayor lead time registrado' : 'Todos los tiempos dentro del objetivo',
+        time: 'Análisis',
         location: 'Todas las áreas',
-        confidence: 90
+        confidence: 85
       });
     }
 
-    return alerts.slice(0, 2);
+    return alerts.slice(0, 2).sort((a, b) => b.confidence - a.confidence);
   }, [heatmapData]);
-
   // 2. Tendencia Semanal
   const weeklyTrendData = React.useMemo(() => {
     const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
@@ -319,7 +321,10 @@ const KPIView = ({ currentUser }) => {
       if (dayData && dayData.count > 0) {
         const avgLeadTime = Math.round(dayData.totalLeadTime / dayData.count);
         const avgEfficiency = Math.round(dayData.totalEfficiency / dayData.count);
-        const change = Math.floor(Math.random() * 20) - 10;
+        const prevDayData = dayGroups[dayNumber - 1];
+        const change = prevDayData && prevDayData.count > 0
+          ? Math.round(((dayData.volume - prevDayData.volume) / prevDayData.volume) * 100)
+          : 0;
 
         return {
           name: dayName,
@@ -328,7 +333,7 @@ const KPIView = ({ currentUser }) => {
           change: change,
           avgLeadTime: avgLeadTime,
           efficiency: avgEfficiency,
-          operators: Math.floor(Math.random() * 5) + 1
+          operators: new Set(heatmapData.filter(h => h.day === dayNumber).flatMap(h => h.operators.map(o => o.name))).size
         };
       } else {
         return {
@@ -352,7 +357,19 @@ const KPIView = ({ currentUser }) => {
       score: op.effortPoints,
       speed: op.avgEfficiency,
       accuracy: op.integrityScore,
-      peakHours: [9, 14]
+      peakHours: (() => {
+        const hourCounts = {};
+        kpiData.orders.filter(o => o.deliveredBy === op.name).forEach(order => {
+          if (order.timestamp) {
+            const hour = order.timestamp.toDate().getHours();
+            hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+          }
+        });
+        return Object.entries(hourCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 2)
+          .map(([hour]) => parseInt(hour));
+      })()
     }));
   }, [kpiData.operatorRanking]);
   useEffect(() => {
@@ -839,7 +856,7 @@ const KPIView = ({ currentUser }) => {
                 <div className="space-y-1.5">
                   {['Lun', 'Mar', 'Mié', 'Jue', 'Vie'].map((day, dayIndex) => {
                     const dayNumber = dayIndex + 1; // 1 = lunes, 5 = viernes
-                    const dayData = heatmapData.find(d => d.day === dayNumber && d.hour === hour);
+                    const dayData = heatmapData.find(d => d.day === dayIndex + 1 && d.hour === hour);
                     // ... resto del código
 
                     <div key={day} className="grid grid-cols-12 gap-1.5 items-center">
