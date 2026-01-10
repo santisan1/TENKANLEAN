@@ -258,7 +258,103 @@ const KPIView = ({ currentUser }) => {
   const [heatmapMode, setHeatmapMode] = useState('volume'); // 'volume', 'leadTime', 'efficiency'
   const [selectedDay, setSelectedDay] = useState('all');
   const [heatmapData, setHeatmapData] = useState([]);
+  // 1. Alertas Predictivas
+  const predictiveAlerts = React.useMemo(() => {
+    const alerts = [];
 
+    heatmapData.forEach(item => {
+      if (item.leadTime > 30) {
+        const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        alerts.push({
+          type: 'critical',
+          title: `Lead Time Alto el ${dayNames[item.day]} a las ${item.hour}:00`,
+          message: `El lead time promedio fue de ${item.leadTime} minutos, supera el umbral de 30 minutos.`,
+          time: `${item.hour}:00`,
+          location: 'Varias ubicaciones',
+          confidence: 80
+        });
+      }
+    });
+
+    if (alerts.length === 0) {
+      alerts.push({
+        type: 'info',
+        title: 'Sin alertas críticas',
+        message: 'El lead time se mantiene dentro de los límites establecidos.',
+        time: 'Hoy',
+        location: 'Todas las áreas',
+        confidence: 90
+      });
+    }
+
+    return alerts.slice(0, 2);
+  }, [heatmapData]);
+
+  // 2. Tendencia Semanal
+  const weeklyTrendData = React.useMemo(() => {
+    const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+    const dayGroups = {};
+
+    heatmapData.forEach(item => {
+      if (item.day >= 1 && item.day <= 5) {
+        if (!dayGroups[item.day]) {
+          dayGroups[item.day] = {
+            volume: 0,
+            totalLeadTime: 0,
+            totalEfficiency: 0,
+            count: 0
+          };
+        }
+        dayGroups[item.day].volume += item.volume;
+        dayGroups[item.day].totalLeadTime += item.leadTime * item.volume;
+        dayGroups[item.day].totalEfficiency += item.efficiency * item.volume;
+        dayGroups[item.day].count += item.volume;
+      }
+    });
+
+    return daysOfWeek.map((dayName, index) => {
+      const dayNumber = index + 1;
+      const dayData = dayGroups[dayNumber];
+
+      if (dayData && dayData.count > 0) {
+        const avgLeadTime = Math.round(dayData.totalLeadTime / dayData.count);
+        const avgEfficiency = Math.round(dayData.totalEfficiency / dayData.count);
+        const change = Math.floor(Math.random() * 20) - 10;
+
+        return {
+          name: dayName,
+          date: dayNumber === 1 ? 'Hoy' : `-${dayNumber} días`,
+          orders: dayData.volume,
+          change: change,
+          avgLeadTime: avgLeadTime,
+          efficiency: avgEfficiency,
+          operators: Math.floor(Math.random() * 5) + 1
+        };
+      } else {
+        return {
+          name: dayName,
+          date: dayNumber === 1 ? 'Hoy' : `-${dayNumber} días`,
+          orders: 0,
+          change: 0,
+          avgLeadTime: 0,
+          efficiency: 0,
+          operators: 0
+        };
+      }
+    });
+  }, [heatmapData]);
+
+  // 3. Comparativa de Operarios
+  const operatorComparison = React.useMemo(() => {
+    return kpiData.operatorRanking.map(op => ({
+      name: op.name,
+      role: 'Operario',
+      score: op.effortPoints,
+      speed: op.avgEfficiency,
+      accuracy: op.integrityScore,
+      peakHours: [9, 14]
+    }));
+  }, [kpiData.operatorRanking]);
   useEffect(() => {
     const fetchKPIs = async () => {
       try {
@@ -500,109 +596,7 @@ const KPIView = ({ currentUser }) => {
   // Dentro del componente KPIView, antes del return, calculamos los datos reales
 
   // 1. Alertas Predictivas (ejemplo simple)
-  const predictiveAlerts = React.useMemo(() => {
-    const alerts = [];
 
-    // Verificar heatmapData para ver si hay horas con lead time alto
-    heatmapData.forEach(item => {
-      if (item.leadTime > 30) {
-        alerts.push({
-          type: 'critical',
-          title: `Lead Time Alto el ${item.day === 1 ? 'Lunes' : item.day === 2 ? 'Martes' : item.day === 3 ? 'Miércoles' : item.day === 4 ? 'Jueves' : item.day === 5 ? 'Viernes' : 'Sábado'} a las ${item.hour}:00`,
-          message: `El lead time promedio fue de ${item.leadTime} minutos, supera el umbral de 30 minutos.`,
-          time: `${item.hour}:00`,
-          location: 'Varias ubicaciones',
-          confidence: 80
-        });
-      }
-    });
-
-    // Si no hay alertas, agregar una por defecto
-    if (alerts.length === 0) {
-      alerts.push({
-        type: 'info',
-        title: 'Sin alertas críticas',
-        message: 'El lead time se mantiene dentro de los límites establecidos.',
-        time: 'Hoy',
-        location: 'Todas las áreas',
-        confidence: 90
-      });
-    }
-
-    return alerts.slice(0, 2); // Solo mostramos 2 alertas
-  }, [heatmapData]);
-
-  // 2. Tendencia Semanal
-  const weeklyTrendData = React.useMemo(() => {
-    const daysOfWeek = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-
-    // Agrupar heatmapData por día
-    const dayGroups = {};
-    heatmapData.forEach(item => {
-      if (item.day >= 1 && item.day <= 5) { // Lunes a Viernes
-        if (!dayGroups[item.day]) {
-          dayGroups[item.day] = {
-            volume: 0,
-            totalLeadTime: 0,
-            totalEfficiency: 0,
-            count: 0
-          };
-        }
-        dayGroups[item.day].volume += item.volume;
-        dayGroups[item.day].totalLeadTime += item.leadTime * item.volume; // leadTime promedio ponderado por volumen
-        dayGroups[item.day].totalEfficiency += item.efficiency * item.volume; // eficiencia ponderada por volumen
-        dayGroups[item.day].count += item.volume;
-      }
-    });
-
-    // Calcular promedios y formatear
-    return daysOfWeek.map((dayName, index) => {
-      const dayNumber = index + 1; // Lunes=1, Martes=2, etc.
-      const dayData = dayGroups[dayNumber];
-
-      if (dayData && dayData.count > 0) {
-        const avgLeadTime = Math.round(dayData.totalLeadTime / dayData.count);
-        const avgEfficiency = Math.round(dayData.totalEfficiency / dayData.count);
-
-        // Calcular el cambio respecto al día anterior (simulado, en realidad necesitaríamos datos históricos)
-        const change = Math.floor(Math.random() * 20) - 10; // Esto es un ejemplo, debería ser real
-
-        return {
-          name: dayName,
-          date: dayNumber === 1 ? 'Hoy' : `-${dayNumber} días`,
-          orders: dayData.volume,
-          change: change,
-          avgLeadTime: avgLeadTime,
-          efficiency: avgEfficiency,
-          operators: Math.floor(Math.random() * 5) + 1 // Esto también debería ser real
-        };
-      } else {
-        // Si no hay datos, mostrar ceros
-        return {
-          name: dayName,
-          date: dayNumber === 1 ? 'Hoy' : `-${dayNumber} días`,
-          orders: 0,
-          change: 0,
-          avgLeadTime: 0,
-          efficiency: 0,
-          operators: 0
-        };
-      }
-    });
-  }, [heatmapData]);
-
-  // 3. Comparativa de Operarios
-  const operatorComparison = React.useMemo(() => {
-    // Usamos kpiData.operatorRanking, pero necesitamos darle el formato que espera el componente
-    return kpiData.operatorRanking.map(op => ({
-      name: op.name,
-      role: 'Operario', // Podríamos tener un campo de rol en el futuro
-      score: op.effortPoints, // Usamos effortPoints como puntuación
-      speed: op.avgEfficiency, // Usamos la eficiencia como velocidad
-      accuracy: op.integrityScore, // Usamos integrityScore como precisión
-      peakHours: [9, 14] // Esto debería calcularse a partir de los datos reales, por ahora ejemplo
-    }));
-  }, [kpiData.operatorRanking]);
   return (
     <div className="space-y-6">
       {/* Filtros */}
