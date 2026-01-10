@@ -171,41 +171,38 @@ const checkExistingOrder = async (cardId) => {
 // ============ COMPONENTE: VISTA DE KPIs MEJORADA ============
 const KPIView = ({ currentUser }) => {
   const [kpiData, setKpiData] = useState({
-    // Resumen general
+    // Resumen Ejecutivo
     overallLeadTime: 0,
+    slaSuccessRate: 0,
     deliveriesToday: 0,
-    pendingOrders: 0,
-    inTransitOrders: 0,
+    criticalDeliveries: 0,
 
-    // Por operario
-    operatorPerformance: [],
+    // Operativo: Ranking por Justicia Operativa
+    operatorRanking: [],
 
-    // Por material
-    materialStats: [],
+    // Analítico: Desglose de Tiempos
+    avgReactionTime: 0,
+    avgExecutionTime: 0,
 
-    // Tendencias
-    hourlyDistribution: [],
-    avgTimeByStage: {
-      creationToDispatch: 0,
-      dispatchToDelivery: 0,
-      total: 0
-    },
+    // Materiales
+    topMaterials: [],
+    problemMaterials: [],
 
-    // Ranking
-    topPerformers: [],
-    problemMaterials: []
+    // Predictivo: Distribución Horaria
+    hourlyHeatmap: [],
+
+    // Integridad
+    suspiciousRate: 0
   });
 
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState('today'); // 'today', 'week', 'month', 'all'
-  const [activeChart, setActiveChart] = useState('overview');
+  const [timeRange, setTimeRange] = useState('today');
 
   useEffect(() => {
     const fetchKPIs = async () => {
       try {
         setLoading(true);
 
-        // Determinar rango de fechas
         const now = new Date();
         let startDate = new Date();
 
@@ -220,248 +217,152 @@ const KPIView = ({ currentUser }) => {
             startDate.setMonth(now.getMonth() - 1);
             break;
           case 'all':
-            startDate = new Date(0); // Desde el inicio
+            startDate = new Date(0);
             break;
         }
 
-        // 1. Obtener TODOS los pedidos entregados en el rango
         const deliveredQuery = query(
           collection(db, 'completed_orders'),
           where('status', '==', 'DELIVERED'),
           where('deliveredAt', '>=', startDate)
         );
 
-        const allOrdersQuery = query(
-          collection(db, 'active_orders'),
-          where('status', 'in', ['PENDING', 'IN_TRANSIT'])
+        const snapshot = await getDocs(deliveredQuery);
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        if (orders.length === 0) {
+          setLoading(false);
+          return;
+        }
+
+        // === DIMENSIÓN 1: DESEMPEÑO OPERATIVO ===
+
+        // Lead Time Promedio
+        const avgLT = Math.round(
+          orders.reduce((sum, o) => sum + (o.totalLeadTime || 0), 0) / orders.length
         );
 
-        const [deliveredSnapshot, allSnapshot] = await Promise.all([
-          getDocs(deliveredQuery),
-          getDocs(allOrdersQuery)
-        ]);
+        // SLA Success Rate
+        const onTimeCount = orders.filter(o => o.onTime).length;
+        const slaSuccess = Math.round((onTimeCount / orders.length) * 100);
 
-        const deliveredOrders = deliveredSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Entregas Críticas (Complejidad 4-5)
+        const criticalCount = orders.filter(o =>
+          (o.complexityWeight || 1) >= 4
+        ).length;
 
-        const allOrders = allSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        // === DIMENSIÓN 2: CARGA Y CAPACIDAD ===
 
-        // 2. Calcular Lead Time General y por Etapa
-        const leadTimes = deliveredOrders
-          .filter(o => o.timestamp && o.dispatchedAt && o.deliveredAt)
-          .map(o => {
-            const created = o.timestamp.toMillis();
-            const dispatched = o.dispatchedAt.toMillis();
-            const delivered = o.deliveredAt.toMillis();
-
-            return {
-              creationToDispatch: (dispatched - created) / 60000, // minutos
-              dispatchToDelivery: (delivered - dispatched) / 60000,
-              total: (delivered - created) / 60000
-            };
-          });
-
-        const avgLeadTime = leadTimes.length > 0
-          ? Math.round(leadTimes.reduce((sum, lt) => sum + lt.total, 0) / leadTimes.length)
-          : 0;
-
-        const avgCreationToDispatch = leadTimes.length > 0
-          ? Math.round(leadTimes.reduce((sum, lt) => sum + lt.creationToDispatch, 0) / leadTimes.length)
-          : 0;
-
-        const avgDispatchToDelivery = leadTimes.length > 0
-          ? Math.round(leadTimes.reduce((sum, lt) => sum + lt.dispatchToDelivery, 0) / leadTimes.length)
-          : 0;
-        // Dentro de tu fetchKPIs, después de obtener los pedidos:
-
-        const processedStats = deliveredOrders.map(order => {
-          const complexity = order.complexityWeight || 1;
-          const target = order.targetLeadTime || 30;
-          const actualTime = order.finalLeadTimeMinutes || 0; // Usamos el campo que creamos al mover
-
-          return {
-            ...order,
-            onTime: actualTime <= target,
-            // Justica Operativa: Puntos = Complejidad x Bonus por cumplimiento (50% extra)
-            effortPoints: complexity * (actualTime <= target ? 1.5 : 1)
-          };
-        });
-
-        // 3. Power Ranking: Agrupar puntos por operario
-        const operatorStatsMap = {};
-
-        processedStats.forEach(order => {
-          const op = order.deliveredBy || 'Anónimo';
-          if (!operatorStatsMap[op]) {
-            operatorStatsMap[op] = {
+        // Power Ranking por Puntos de Esfuerzo
+        const operatorMap = {};
+        orders.forEach(o => {
+          const op = o.deliveredBy || 'Anónimo';
+          if (!operatorMap[op]) {
+            operatorMap[op] = {
               deliveries: 0,
-              totalLoad: 0,
-              efficiencySum: 0,
-              avgReaction: 0,
-              suspiciousCount: 0
+              totalEffortPoints: 0,
+              totalReaction: 0,
+              totalExecution: 0,
+              suspiciousCount: 0,
+              efficiencySum: 0
             };
           }
 
-          operatorStatsMap[op].deliveries++;
-          // SUMA DE CARGA ACUMULADA: Niveles 4 y 5 suman mucho más
-          operatorStatsMap[op].totalLoad += order.loadPoints || 0;
-
-          // DESEMPEÑO DE TIEMPOS
-          operatorStatsMap[op].efficiencySum += order.taskEfficiency || 0;
-          operatorStatsMap[op].avgReaction += order.reactionTime || 0;
-
-          if (order.isSuspicious) operatorStatsMap[op].suspiciousCount++;
+          operatorMap[op].deliveries++;
+          operatorMap[op].totalEffortPoints += (o.effortPoints || o.loadPoints || 1);
+          operatorMap[op].totalReaction += (o.reactionTime || 0);
+          operatorMap[op].totalExecution += (o.executionTime || 0);
+          operatorMap[op].efficiencySum += (o.taskEfficiency || 100);
+          if (o.isSuspicious) operatorMap[op].suspiciousCount++;
         });
 
-        const operatorPerformance = Object.entries(operatorStatsMap)
+        const operatorRanking = Object.entries(operatorMap)
           .map(([name, stats]) => ({
             name,
             deliveries: stats.deliveries,
-            // PUNTOS DE CARGA: Esta es la métrica de volumen de trabajo real
-            totalPoints: stats.totalLoad,
-            // EFICIENCIA: Qué tan bien cumple sus estándares
+            effortPoints: Math.round(stats.totalEffortPoints),
+            avgReaction: Math.round(stats.totalReaction / stats.deliveries),
+            avgExecution: Math.round(stats.totalExecution / stats.deliveries),
             avgEfficiency: Math.round(stats.efficiencySum / stats.deliveries),
-            // REACCIÓN: Cuánto tarda en aceptar un pedido (bajo es mejor)
-            reactionRank: Math.round(stats.avgReaction / stats.deliveries),
-            // INTEGRIDAD: Porcentaje de pedidos realizados bajo el proceso correcto
-            integrityScore: Math.round(((stats.deliveries - stats.suspiciousCount) / stats.deliveries) * 100)
+            integrityScore: Math.round(
+              ((stats.deliveries - stats.suspiciousCount) / stats.deliveries) * 100
+            )
           }))
-          .sort((a, b) => b.totalPoints - a.totalPoints); // Ranking por Carga Acumulada  
-        // KPI: Porcentaje de éxito sobre SLA
-        const slaSuccess = Math.round((processedStats.filter(s => s.onTime).length / processedStats.length) * 100) || 0;
-        // --- CÁLCULOS PROFESIONALES POST-PROCESAMIENTO ---
+          .sort((a, b) => b.effortPoints - a.effortPoints);
 
-        // 1. Porcentaje de Éxito (SLA %)
-        const totalDelivered = processedStats.length;
-        const onTimeCount = processedStats.filter(s => s.onTime).length;
-        const slaPercent = totalDelivered > 0 ? Math.round((onTimeCount / totalDelivered) * 100) : 0;
+        // === DIMENSIÓN 3: SERVICIO ===
 
-        // 2. Power Ranking por Esfuerzo (Justicia Operativa)
-        const rankingMap = {};
-        processedStats.forEach(s => {
-          const op = s.deliveredBy || 'S/A';
-          rankingMap[op] = (rankingMap[op] || 0) + s.effortPoints;
-        });
+        // Tiempos Promedio Segmentados
+        const avgReaction = Math.round(
+          orders.reduce((sum, o) => sum + (o.reactionTime || 0), 0) / orders.length
+        );
+        const avgExecution = Math.round(
+          orders.reduce((sum, o) => sum + (o.executionTime || 0), 0) / orders.length
+        );
 
-
-        // 3. Actualizamos el estado final
-        setKpiData(prev => ({
-          ...prev,
-          operatorPerformance, // Ahora basado en Puntos de Esfuerzo
-          overallLeadTime: avgLeadTime,
-          deliveriesToday: totalDelivered,
-          slaSuccessRate: slaPercent // Nuevo campo para tu UI
-        }));
-        // KPI: Power Ranking por Esfuerzo (No por cantidad)
-        const ranking = {};
-        processedStats.forEach(s => {
-          ranking[s.deliveredBy] = (ranking[s.deliveredBy] || 0) + s.effortPoints;
-        });
-
-        // 2. Calculamos el % de Éxito General (SLA)
-        const totalSuccess = processedStats.filter(s => s.isSuccess).length;
-        const successRate = Math.round((totalSuccess / processedStats.length) * 100);
-
-        // 3. Ranking de Operarios por "Puntos de Esfuerzo" (Justicia Operativa)
-        const operatorEffort = {};
-        processedStats.forEach(s => {
-          const op = s.deliveredBy;
-          if (!operatorEffort[op]) operatorEffort[op] = 0;
-          operatorEffort[op] += s.effortPoints;
-        });
-        // 3. Rendimiento por Operario
-        const operatorStats = {};
-        deliveredOrders.forEach(order => {
-          if (order.deliveredBy) {
-            const op = order.deliveredBy;
-            if (!operatorStats[op]) {
-              operatorStats[op] = {
-                deliveries: 0,
-                totalLeadTime: 0,
-                leadTimes: []
-              };
-            }
-            operatorStats[op].deliveries++;
-
-            if (order.timestamp && order.deliveredAt) {
-              const leadTime = (order.deliveredAt.toMillis() - order.timestamp.toMillis()) / 60000;
-              operatorStats[op].totalLeadTime += leadTime;
-              operatorStats[op].leadTimes.push(leadTime);
-            }
-          }
-        });
-
-
-        const materialStats = {};
-        deliveredOrders.forEach(order => {
-          const material = order.partNumber;
-          if (!materialStats[material]) {
-            materialStats[material] = {
+        // Top 5 Materiales Más Solicitados
+        const materialMap = {};
+        orders.forEach(o => {
+          const pn = o.partNumber || 'Desconocido';
+          if (!materialMap[pn]) {
+            materialMap[pn] = {
               count: 0,
-              totalLeadTime: 0,
-              description: order.description || 'Sin descripción'
+              totalTime: 0,
+              description: o.description || ''
             };
           }
-          materialStats[material].count++;
-
-          if (order.timestamp && order.deliveredAt) {
-            const leadTime = (order.deliveredAt.toMillis() - order.timestamp.toMillis()) / 60000;
-            materialStats[material].totalLeadTime += leadTime;
-          }
+          materialMap[pn].count++;
+          materialMap[pn].totalTime += (o.totalLeadTime || 0);
         });
 
-        const materialArray = Object.entries(materialStats)
-          .map(([partNumber, stats]) => ({
-            partNumber,
-            description: stats.description,
-            frequency: stats.count,
-            avgLeadTime: stats.count > 0
-              ? Math.round(stats.totalLeadTime / stats.count)
-              : 0
+        const topMaterials = Object.entries(materialMap)
+          .map(([pn, data]) => ({
+            partNumber: pn,
+            description: data.description,
+            frequency: data.count,
+            avgLeadTime: Math.round(data.totalTime / data.count)
           }))
           .sort((a, b) => b.frequency - a.frequency)
-          .slice(0, 10); // Top 10 materiales
-
-        // 5. Distribución por hora
-        const hourlyDistribution = Array(24).fill(0);
-        deliveredOrders.forEach(order => {
-          if (order.deliveredAt) {
-            const hour = order.deliveredAt.toDate().getHours();
-            hourlyDistribution[hour]++;
-          }
-        });
-
-        // 6. Órdenes actuales
-        const pendingOrders = allOrders.filter(o => o.status === 'PENDING').length;
-        const inTransitOrders = allOrders.filter(o => o.status === 'IN_TRANSIT').length;
-
-        // 7. Top performers y materiales problemáticos
-        const topPerformers = [...operatorPerformance]
-          .sort((a, b) => b.efficiency - a.efficiency)
           .slice(0, 5);
 
-        const problemMaterials = [...materialArray]
-          .filter(m => m.frequency >= 3) // Al menos 3 ocurrencias
+        // Materiales Problemáticos (alto Lead Time)
+        const problemMaterials = Object.entries(materialMap)
+          .filter(([_, data]) => data.count >= 2)
+          .map(([pn, data]) => ({
+            partNumber: pn,
+            description: data.description,
+            avgLeadTime: Math.round(data.totalTime / data.count)
+          }))
           .sort((a, b) => b.avgLeadTime - a.avgLeadTime)
           .slice(0, 5);
 
+        // === DIMENSIÓN 4: INTEGRIDAD DE DATOS ===
+
+        const suspiciousCount = orders.filter(o => o.isSuspicious).length;
+        const suspiciousRate = Math.round((suspiciousCount / orders.length) * 100);
+
+        // === PREDICTIVO: HEATMAP HORARIO ===
+
+        const hourlyMap = Array(24).fill(0);
+        orders.forEach(o => {
+          if (o.deliveredAt) {
+            const hour = o.deliveredAt.toDate().getHours();
+            hourlyMap[hour]++;
+          }
+        });
+
         setKpiData({
-          overallLeadTime: avgLeadTime,
-          deliveriesToday: deliveredOrders.length,
-          pendingOrders,
-          inTransitOrders,
-          operatorPerformance,
-          materialStats: materialArray,
-          hourlyDistribution,
-          avgTimeByStage: {
-            creationToDispatch: avgCreationToDispatch,
-            dispatchToDelivery: avgDispatchToDelivery,
-            total: avgLeadTime
-          },
-          topPerformers,
-          problemMaterials
+          overallLeadTime: avgLT,
+          slaSuccessRate: slaSuccess,
+          deliveriesToday: orders.length,
+          criticalDeliveries: criticalCount,
+          operatorRanking,
+          avgReactionTime: avgReaction,
+          avgExecutionTime: avgExecution,
+          topMaterials,
+          problemMaterials,
+          hourlyHeatmap: hourlyMap,
+          suspiciousRate
         });
 
       } catch (error) {
@@ -472,316 +373,273 @@ const KPIView = ({ currentUser }) => {
     };
 
     fetchKPIs();
-    const interval = setInterval(fetchKPIs, 60000); // Actualizar cada minuto
+    const interval = setInterval(fetchKPIs, 120000); // Cada 2 minutos
     return () => clearInterval(interval);
   }, [timeRange]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        <div className="w-16 h-16 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Filtros de tiempo */}
-      <div className="flex items-center justify-between mb-6">
+      {/* Filtros */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Dashboard de Estadísticas</h1>
-          <p className="text-gray-400">Métricas de rendimiento en tiempo real</p>
+          <h1 className="text-3xl font-bold text-white">Supply Chain 4.0 Analytics</h1>
+          <p className="text-gray-400 mt-1">Dashboard de KPIs Avanzados</p>
         </div>
-
-        <div className="flex items-center gap-2 bg-gray-800/50 rounded-lg p-1">
+        <div className="flex gap-2 bg-gray-800/50 rounded-xl p-1">
           {['today', 'week', 'month', 'all'].map((range) => (
             <button
               key={range}
               onClick={() => setTimeRange(range)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${timeRange === range
-                ? 'bg-blue-500 text-white'
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${timeRange === range
+                ? 'bg-blue-500 text-white shadow-lg'
                 : 'text-gray-400 hover:text-white hover:bg-gray-700'
                 }`}
             >
-              {range === 'today' ? 'Hoy' :
-                range === 'week' ? 'Semana' :
-                  range === 'month' ? 'Mes' : 'Todo'}
+              {range === 'today' ? 'Hoy' : range === 'week' ? 'Semana' : range === 'month' ? 'Mes' : 'Todo'}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Tarjetas de Resumen */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-2xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Clock className="w-8 h-8 text-blue-400" />
-            <div>
-              <p className="text-sm text-gray-400">Lead Time Promedio</p>
-              <p className="text-3xl font-bold text-white">{kpiData.overallLeadTime}<span className="text-lg text-gray-400">min</span></p>
-            </div>
-          </div>
-          <div className="text-xs text-blue-300">
-            {kpiData.avgTimeByStage.creationToDispatch}min prep + {kpiData.avgTimeByStage.dispatchToDelivery}min entrega
-          </div>
+      {/* === NIVEL EJECUTIVO === */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-2 border-blue-500/30 rounded-2xl p-6">
+          <Clock className="w-10 h-10 text-blue-400 mb-3" />
+          <p className="text-sm text-gray-400 mb-1">Lead Time Total</p>
+          <p className="text-4xl font-black text-white">{kpiData.overallLeadTime}<span className="text-lg text-gray-400">min</span></p>
+          <p className="text-xs text-blue-300 mt-2">Promedio extremo a extremo</p>
         </div>
 
-        <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border border-green-500/20 rounded-2xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <CheckCircle className="w-8 h-8 text-green-400" />
-            <div>
-              <p className="text-sm text-gray-400">Entregas ({timeRange})</p>
-              <p className="text-3xl font-bold text-white">{kpiData.deliveriesToday}</p>
-            </div>
-          </div>
-          <div className="text-xs text-green-300">Completadas en el período</div>
+        <div className="bg-gradient-to-br from-green-500/10 to-green-600/10 border-2 border-green-500/30 rounded-2xl p-6">
+          <CheckCircle className="w-10 h-10 text-green-400 mb-3" />
+          <p className="text-sm text-gray-400 mb-1">Cumplimiento SLA</p>
+          <p className="text-4xl font-black text-white">{kpiData.slaSuccessRate}<span className="text-lg text-gray-400">%</span></p>
+          <p className="text-xs text-green-300 mt-2">Entregas a tiempo</p>
         </div>
 
-        <div className="bg-gradient-to-br from-yellow-500/10 to-yellow-600/10 border border-yellow-500/20 rounded-2xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Truck className="w-8 h-8 text-yellow-400" />
-            <div>
-              <p className="text-sm text-gray-400">En Proceso</p>
-              <p className="text-3xl font-bold text-white">{kpiData.pendingOrders + kpiData.inTransitOrders}</p>
-            </div>
-          </div>
-          <div className="text-xs text-yellow-300">
-            {kpiData.pendingOrders} pendientes + {kpiData.inTransitOrders} en tránsito
-          </div>
+        <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border-2 border-purple-500/30 rounded-2xl p-6">
+          <Package className="w-10 h-10 text-purple-400 mb-3" />
+          <p className="text-sm text-gray-400 mb-1">Entregas Totales</p>
+          <p className="text-4xl font-black text-white">{kpiData.deliveriesToday}</p>
+          <p className="text-xs text-purple-300 mt-2">En el período</p>
         </div>
 
-        <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border border-purple-500/20 rounded-2xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <User className="w-8 h-8 text-purple-400" />
-            <div>
-              <p className="text-sm text-gray-400">Operarios Activos</p>
-              <p className="text-3xl font-bold text-white">{kpiData.operatorPerformance.length}</p>
-            </div>
-          </div>
-          <div className="text-xs text-purple-300">Realizando entregas</div>
+        <div className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border-2 border-orange-500/30 rounded-2xl p-6">
+          <AlertTriangle className="w-10 h-10 text-orange-400 mb-3" />
+          <p className="text-sm text-gray-400 mb-1">Entregas Críticas</p>
+          <p className="text-4xl font-black text-white">{kpiData.criticalDeliveries}</p>
+          <p className="text-xs text-orange-300 mt-2">Complejidad Nivel 4-5</p>
         </div>
       </div>
 
-      {/* Sección principal con tabs */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Columna izquierda: Rendimiento por Operario */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <User className="w-6 h-6 text-green-400" />
-                Rendimiento por Operario
-              </h2>
-              <span className="text-sm text-gray-400">Top {kpiData.operatorPerformance.length}</span>
-            </div>
-
-            {/* REEMPLAZA TODA LA LISTA DE OPERARIOS CON ESTO */}
-            <div className="space-y-4">
-              {kpiData.operatorPerformance.map((op, idx) => (
-                <div key={idx} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-gray-500 font-bold">#{idx + 1}</span>
-                      <div>
-                        <p className="font-bold text-white capitalize text-lg">{op.name}</p>
-                        <p className="text-[10px] text-gray-500 uppercase">{op.deliveries} entregas realizadas</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {/* CARGA ACUMULADA: Puntos por sacar materiales Nivel 4 o 5 */}
-                      <p className="text-orange-400 font-black text-xl">{op.totalPoints || 0} PTS</p>
-                      <p className="text-[10px] text-gray-500 uppercase">Carga Logística</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* BARRA DE EFICIENCIA OPERATIVA (Velocidad vs Estándar) */}
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-blue-400 font-bold">Eficiencia de Tarea</span>
-                        <span className="text-white">{op.avgEfficiency}%</span>
-                      </div>
-                      <div className="w-full h-2 bg-gray-900 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min(op.avgEfficiency, 100)}%` }}
-                          className={`h-full ${op.avgEfficiency >= 100 ? 'bg-blue-500' : 'bg-blue-600/40'}`}
-                        />
-                      </div>
-                    </div>
-
-                    {/* BARRA DE REACCIÓN (Detectar si prepara antes de aceptar) */}
-                    <div>
-                      <div className="flex justify-between text-[10px] mb-1">
-                        <span className="text-gray-400 uppercase">Tiempo de Reacción</span>
-                        <span className={op.reactionRank > 10 ? 'text-red-400' : 'text-green-400'}>
-                          Promedio: {op.reactionRank} min
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 bg-gray-900 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${op.reactionRank > 10 ? 'bg-red-500' : 'bg-green-500'}`}
-                          style={{ width: `${Math.min(op.reactionRank * 5, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* SCORE DE INTEGRIDAD (Apego al proceso) */}
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-700/50">
-                      <span className="text-[10px] text-gray-400 uppercase">Integridad de Proceso (Anti-Trampa)</span>
-                      <span className={`text-xs font-bold ${op.integrityScore < 90 ? 'text-yellow-500' : 'text-green-500'}`}>
-                        {op.integrityScore}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Materiales más solicitados */}
-          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
-            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <Package className="w-6 h-6 text-blue-400" />
-              Materiales Más Solicitados
-            </h2>
-            <div className="space-y-4">
-              {kpiData.materialStats.map((mat, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                      <span className="font-bold text-blue-400">#{idx + 1}</span>
+      {/* === NIVEL OPERATIVO + ANALÍTICO === */}
+      <div className="grid grid-cols-3 gap-6">
+        {/* Ranking de Operarios (Justicia Operativa) */}
+        <div className="col-span-2 bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+          <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+            <Award className="w-7 h-7 text-yellow-400" />
+            Power Ranking • Justicia Operativa
+          </h2>
+          <div className="space-y-4">
+            {kpiData.operatorRanking.map((op, idx) => (
+              <div key={idx} className="bg-gray-800/50 rounded-xl p-5 border border-gray-700 hover:border-gray-600 transition-all">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-xl ${idx === 0 ? 'bg-yellow-500/20 text-yellow-400' :
+                      idx === 1 ? 'bg-gray-400/20 text-gray-300' :
+                        idx === 2 ? 'bg-orange-600/20 text-orange-400' :
+                          'bg-gray-700 text-gray-400'
+                      }`}>
+                      #{idx + 1}
                     </div>
                     <div>
-                      <p className="font-mono font-bold text-white">{mat.partNumber}</p>
-                      <p className="text-xs text-gray-400">{mat.description}</p>
-                      <p className="text-xs text-gray-500">{mat.avgLeadTime} min promedio</p>
+                      <p className="text-xl font-bold text-white capitalize">{op.name}</p>
+                      <p className="text-xs text-gray-500 uppercase">{op.deliveries} entregas</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-blue-400">{mat.frequency}</div>
-                    <div className="text-xs text-gray-400">solicitudes</div>
+                    <p className="text-3xl font-black text-orange-400">{op.effortPoints}</p>
+                    <p className="text-xs text-gray-500 uppercase">Puntos de Carga</p>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="grid grid-cols-4 gap-3 mt-4">
+                  {/* Reacción */}
+                  <div className="bg-gray-900/50 rounded-lg p-3">
+                    <p className="text-[10px] text-gray-400 uppercase mb-1">Reacción</p>
+                    <p className={`text-lg font-bold ${op.avgReaction > 10 ? 'text-red-400' : 'text-green-400'}`}>
+                      {op.avgReaction}m
+                    </p>
+                  </div>
+
+                  {/* Ejecución */}
+                  <div className="bg-gray-900/50 rounded-lg p-3">
+                    <p className="text-[10px] text-gray-400 uppercase mb-1">Ejecución</p>
+                    <p className="text-lg font-bold text-blue-400">{op.avgExecution}m</p>
+                  </div>
+
+                  {/* Eficiencia */}
+                  <div className="bg-gray-900/50 rounded-lg p-3">
+                    <p className="text-[10px] text-gray-400 uppercase mb-1">Eficiencia</p>
+                    <p className={`text-lg font-bold ${op.avgEfficiency >= 100 ? 'text-green-400' : 'text-yellow-400'}`}>
+                      {op.avgEfficiency}%
+                    </p>
+                  </div>
+
+                  {/* Integridad */}
+                  <div className="bg-gray-900/50 rounded-lg p-3">
+                    <p className="text-[10px] text-gray-400 uppercase mb-1">Integridad</p>
+                    <p className={`text-lg font-bold ${op.integrityScore < 90 ? 'text-yellow-400' : 'text-green-400'}`}>
+                      {op.integrityScore}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Columna derecha: Métricas detalladas */}
+        {/* Desglose de Tiempos */}
         <div className="space-y-6">
-          {/* Tiempos por etapa */}
-          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
+          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
             <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
               <Clock className="w-6 h-6 text-purple-400" />
-              Tiempos por Etapa
+              Desglose de Tiempos
             </h2>
             <div className="space-y-4">
               <div className="bg-gray-800/50 rounded-xl p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-300">Preparación</span>
-                  <span className="font-bold text-purple-400">{kpiData.avgTimeByStage.creationToDispatch} min</span>
-                </div>
-                <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-purple-500 h-2 rounded-full"
-                    style={{ width: `${Math.min((kpiData.avgTimeByStage.creationToDispatch / kpiData.avgTimeByStage.total) * 100, 100)}%` }}
-                  ></div>
-                </div>
+                <p className="text-xs text-gray-400 mb-2">Tiempo de Reacción</p>
+                <p className="text-3xl font-bold text-purple-400">{kpiData.avgReactionTime}min</p>
+                <p className="text-xs text-gray-500 mt-1">Desde creación a aceptación</p>
               </div>
-
               <div className="bg-gray-800/50 rounded-xl p-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-300">Entrega</span>
-                  <span className="font-bold text-blue-400">{kpiData.avgTimeByStage.dispatchToDelivery} min</span>
-                </div>
-                <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-blue-500 h-2 rounded-full"
-                    style={{ width: `${Math.min((kpiData.avgTimeByStage.dispatchToDelivery / kpiData.avgTimeByStage.total) * 100, 100)}%` }}
-                  ></div>
-                </div>
+                <p className="text-xs text-gray-400 mb-2">Tiempo de Ejecución</p>
+                <p className="text-3xl font-bold text-blue-400">{kpiData.avgExecutionTime}min</p>
+                <p className="text-xs text-gray-500 mt-1">Desde aceptación a entrega</p>
               </div>
-
-              <div className="bg-gray-800/50 rounded-xl p-4 border border-green-500/20">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 font-bold">Total</span>
-                  <span className="font-bold text-green-400 text-xl">{kpiData.avgTimeByStage.total} min</span>
-                </div>
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-green-500/30">
+                <p className="text-xs text-gray-400 mb-2">Lead Time Total</p>
+                <p className="text-3xl font-bold text-green-400">{kpiData.overallLeadTime}min</p>
+                <p className="text-xs text-gray-500 mt-1">Promedio global</p>
               </div>
             </div>
           </div>
 
-          {/* Top Performers */}
-          <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
-            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <Activity className="w-6 h-6 text-yellow-400" />
-              Top Eficiencia
+          {/* Integridad de Proceso */}
+          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              <Info className="w-6 h-6 text-red-400" />
+              Integridad de Datos
             </h2>
-            <div className="space-y-4">
-              {kpiData.topPerformers.map((op, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-full flex items-center justify-center">
-                      <span className="font-bold text-yellow-400">#{idx + 1}</span>
-                    </div>
-                    <div>
-                      <p className="font-bold text-white capitalize">{op.name}</p>
-                      <p className="text-xs text-gray-400">{op.avgLeadTime} min promedio</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-yellow-400">{op.efficiency}%</div>
-                    <div className="text-xs text-gray-400">eficiencia</div>
-                  </div>
-                </div>
-              ))}
+            <div className="bg-gray-800/50 rounded-xl p-4">
+              <p className="text-xs text-gray-400 mb-2">Pedidos Sospechosos</p>
+              <p className={`text-4xl font-bold ${kpiData.suspiciousRate > 10 ? 'text-red-400' : 'text-green-400'}`}>
+                {kpiData.suspiciousRate}%
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Entregas &lt; 20% del tiempo estándar
+              </p>
             </div>
           </div>
-
-          {/* Materiales Problemáticos */}
-          {kpiData.problemMaterials.length > 0 && (
-            <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-red-800/50 p-6">
-              <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                <AlertTriangle className="w-6 h-6 text-red-400" />
-                Materiales con Mayor Lead Time
-              </h2>
-              <div className="space-y-4">
-                {kpiData.problemMaterials.map((mat, idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-xl p-4 border border-red-500/20">
-                    <div>
-                      <p className="font-mono font-bold text-white text-sm">{mat.partNumber}</p>
-                      <p className="text-xs text-gray-400 truncate max-w-[120px]">{mat.description}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-red-400">{mat.avgLeadTime} min</div>
-                      <div className="text-xs text-gray-400">promedio</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Gráfico simple de distribución horaria */}
-      <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800 p-6">
-        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-          <Clock className="w-6 h-6 text-blue-400" />
-          Distribución de Entregas por Hora
+      {/* === NIVEL PREDICTIVO === */}
+      <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <BarChart3 className="w-7 h-7 text-blue-400" />
+          Heatmap Horario • Planificación de Turnos
         </h2>
-        <div className="flex items-end justify-between h-48 pt-6 border-t border-gray-800">
-          {kpiData.hourlyDistribution.map((count, hour) => (
-            <div key={hour} className="flex flex-col items-center flex-1 mx-1">
-              <div
-                className="w-full bg-gradient-to-t from-blue-500 to-blue-600 rounded-t-lg transition-all hover:opacity-80"
-                style={{ height: `${(count / Math.max(...kpiData.hourlyDistribution)) * 80 || 0}%` }}
-                title={`${count} entregas a las ${hour}:00`}
-              ></div>
-              <span className="text-xs text-gray-500 mt-2">{hour}:00</span>
-            </div>
-          ))}
+        <div className="flex items-end justify-between h-64 gap-1">
+          {kpiData.hourlyHeatmap.map((count, hour) => {
+            const maxCount = Math.max(...kpiData.hourlyHeatmap);
+            const height = maxCount > 0 ? (count / maxCount) * 100 : 0;
+            const isPeak = count >= maxCount * 0.7;
+
+            return (
+              <div key={hour} className="flex-1 flex flex-col items-center gap-2">
+                <div
+                  className={`w-full rounded-t-lg transition-all hover:opacity-80 cursor-pointer ${isPeak
+                    ? 'bg-gradient-to-t from-orange-500 to-red-500'
+                    : 'bg-gradient-to-t from-blue-500 to-blue-600'
+                    }`}
+                  style={{ height: `${height}%` }}
+                  title={`${count} entregas a las ${hour}:00`}
+                />
+                <span className={`text-[10px] ${isPeak ? 'text-orange-400 font-bold' : 'text-gray-500'}`}>
+                  {hour}h
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-6 flex items-center justify-center gap-6 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded bg-gradient-to-t from-orange-500 to-red-500" />
+            <span className="text-gray-400">Horas Pico (reforzar personal)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded bg-gradient-to-t from-blue-500 to-blue-600" />
+            <span className="text-gray-400">Carga Normal</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Top Materiales y Problemáticos */}
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <Package className="w-6 h-6 text-green-400" />
+            Top 5 Materiales
+          </h2>
+          <div className="space-y-3">
+            {kpiData.topMaterials.map((mat, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
+                    <span className="font-bold text-green-400">#{idx + 1}</span>
+                  </div>
+                  <div>
+                    <p className="font-mono font-bold text-white text-sm">{mat.partNumber}</p>
+                    <p className="text-xs text-gray-400 truncate max-w-[200px]">{mat.description}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-green-400">{mat.frequency}</p>
+                  <p className="text-xs text-gray-500">{mat.avgLeadTime}min avg</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-gray-900/50 rounded-2xl border border-red-800/50 p-6">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <AlertTriangle className="w-6 h-6 text-red-400" />
+            Materiales Problemáticos
+          </h2>
+          <div className="space-y-3">
+            {kpiData.problemMaterials.map((mat, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-gray-800/50 rounded-lg p-4 border border-red-500/20">
+                <div>
+                  <p className="font-mono font-bold text-white text-sm">{mat.partNumber}</p>
+                  <p className="text-xs text-gray-400 truncate max-w-[200px]">{mat.description}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-red-400">{mat.avgLeadTime}min</p>
+                  <p className="text-xs text-gray-500">promedio</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -1212,28 +1070,58 @@ const SupplyChainView = ({ currentUser, onLogout }) => {
         const now = Date.now();
         const t_creacion = data.timestamp.toMillis();
         const t_aceptado = data.dispatchedAt.toMillis();
+        const t_entregado = now;
 
         // 1. TIEMPOS SEGMENTADOS (en minutos)
-        const reactionTime = (t_aceptado - t_creacion) / 60000; // Tiempo en tablero
-        const executionTime = (now - t_aceptado) / 60000;      // Tiempo real de la tarea
-        const totalLeadTime = (now - t_creacion) / 60000;      // Lead Time General
+        const reactionTime = Math.round((t_aceptado - t_creacion) / 60000);
+        const executionTime = Math.round((t_entregado - t_aceptado) / 60000);
+        const totalLeadTime = Math.round((t_entregado - t_creacion) / 60000);
 
         // 2. CÁLCULO DE EFICIENCIA Y CARGA
-        const stdTime = parseInt(data.stdOpTime || 5);
-        const taskEfficiency = Math.round((stdTime / executionTime) * 100);
+        const stdTime = parseInt(data.stdOpTime || 10);
         const complexity = parseInt(data.complexityWeight || 1);
+        const targetLT = parseInt(data.targetLeadTime || 30);
 
+        // Eficiencia de Tarea (cuánto mejor que el estándar)
+        const taskEfficiency = Math.round((stdTime / executionTime) * 100);
+
+        // Puntos de Carga Acumulada (Niveles 4-5 valen mucho más)
+        const loadPoints = complexity * (complexity >= 4 ? 2 : 1);
+
+        // Bonus por cumplimiento de SLA (50% extra)
+        const effortPoints = totalLeadTime <= targetLT ? loadPoints * 1.5 : loadPoints;
+
+        // 3. DETECCIÓN DE ANOMALÍAS (Anti-Gaming)
+        const isSuspicious = executionTime < (stdTime * 0.2);
+
+        // 4. CUMPLIMIENTO DE SLA
+        const onTime = totalLeadTime <= targetLT;
+
+        // 5. GUARDAR EN COMPLETED_ORDERS
         await addDoc(collection(db, 'completed_orders'), {
           ...data,
           status: 'DELIVERED',
           deliveredAt: serverTimestamp(),
-          reactionTime: Math.round(reactionTime),
-          executionTime: Math.round(executionTime),
-          totalLeadTime: Math.round(totalLeadTime),
-          taskEfficiency: taskEfficiency,
-          loadPoints: complexity, // Puntos por nivel de dificultad
-          // Marcamos como sospechoso si aceptó y entregó en < 20% del tiempo estándar
-          isSuspicious: executionTime < (stdTime * 0.2)
+          deliveredBy: currentUser.email.split('@')[0],
+
+          // Tiempos Segmentados
+          reactionTime,
+          executionTime,
+          totalLeadTime,
+
+          // Métricas de Desempeño
+          taskEfficiency,
+          loadPoints,
+          effortPoints,
+
+          // Flags de Control
+          isSuspicious,
+          onTime,
+
+          // Data Sanitizada
+          complexityWeight: complexity,
+          stdOpTime: stdTime,
+          targetLeadTime: targetLT
         });
 
         await deleteDoc(orderRef);
